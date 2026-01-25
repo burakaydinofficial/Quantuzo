@@ -1,0 +1,64 @@
+FROM ubuntu:22.04 AS builder
+
+ARG NATIVE_BUILD=OFF
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Clone llama.cpp
+RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git .
+
+# Build with static linking to avoid shared library issues
+RUN if [ "$NATIVE_BUILD" = "ON" ]; then \
+        cmake -B build \
+            -DGGML_NATIVE=ON \
+            -DLLAMA_CURL=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DLLAMA_BUILD_SERVER=ON; \
+    else \
+        cmake -B build \
+            -DGGML_AVX2=ON \
+            -DLLAMA_CURL=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DLLAMA_BUILD_SERVER=ON; \
+    fi && \
+    cmake --build build --config Release -j$(nproc) --target llama-server
+
+# Collect all shared libs the binary needs (create dir with placeholder if empty)
+RUN mkdir -p /build/libs && \
+    touch /build/libs/.placeholder && \
+    (ldd /build/build/bin/llama-server 2>/dev/null | grep "=> /" | awk '{print $3}' | xargs -I {} cp {} /build/libs/ 2>/dev/null || true) && \
+    (find /build/build -name "*.so*" -exec cp {} /build/libs/ \; 2>/dev/null || true)
+
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    libgomp1 \
+    libcurl4 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary
+COPY --from=builder /build/build/bin/llama-server ./llama-server
+
+# Copy any libs from build (includes placeholder so COPY doesn't fail)
+COPY --from=builder /build/libs/ /usr/local/lib/
+
+# Update library cache
+RUN ldconfig
+
+# Create models directory mount point
+RUN mkdir -p /models
+
+EXPOSE 8080
+
+CMD ["./llama-server", "--help"]

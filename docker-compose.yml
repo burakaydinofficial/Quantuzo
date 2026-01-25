@@ -1,0 +1,67 @@
+services:
+  llama-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.llama-server
+      args:
+        NATIVE_BUILD: ${NATIVE_BUILD:-OFF}
+    environment:
+      - MODEL_FILE=${MODEL_FILE:-model.gguf}
+      - CTX_SIZE=${CTX_SIZE:-32768}
+      - THREADS=${THREADS:-16}
+      - THREADS_BATCH=${THREADS_BATCH:-8}
+      - KV_TYPE_K=${KV_TYPE_K:-f16}
+      - KV_TYPE_V=${KV_TYPE_V:-f16}
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    command: >
+      ./llama-server
+      -m /models/${MODEL_FILE:-model.gguf}
+      -c ${CTX_SIZE:-32768}
+      -t ${THREADS:-16}
+      -tb ${THREADS_BATCH:-8}
+      --cache-type-k ${KV_TYPE_K:-f16}
+      --cache-type-v ${KV_TYPE_V:-f16}
+      --host 0.0.0.0
+      --port 8080
+
+  swe-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.swe-agent
+    environment:
+      - OPENAI_API_BASE=http://llama-server:8080/v1
+      - OPENAI_API_KEY=dummy
+      - MODEL_NAME=${MODEL_NAME:-qwen3-4b}
+      - RUN_ID=${RUN_ID:-default}
+      - DATASET=${DATASET:-princeton-nlp/SWE-bench_Lite}
+      - INSTANCE_FILTER=${INSTANCE_FILTER:-}
+    volumes:
+      - ./results:/results
+    depends_on:
+      llama-server:
+        condition: service_healthy
+    profiles:
+      - generate
+
+  evaluator:
+    build:
+      context: .
+      dockerfile: Dockerfile.evaluator
+    environment:
+      - EVAL_WORKERS=${EVAL_WORKERS:-8}
+      - RUN_ID=${RUN_ID:-default}
+      - DATASET=${DATASET:-princeton-nlp/SWE-bench_Lite}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./results:/results
+    profiles:
+      - evaluate
