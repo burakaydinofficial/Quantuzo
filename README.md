@@ -29,7 +29,7 @@ docker compose build
 
 ## Hardware Requirements
 
-**Current focus:** CPU inference
+**Supports:** CPU and NVIDIA GPU inference
 
 ### Mandatory Parameters
 
@@ -68,6 +68,48 @@ docker compose build --build-arg NATIVE_BUILD=ON
 ```
 
 **Note:** Do not publish pre-built images. Users should build locally for optimal performance.
+
+## GPU Support (NVIDIA CUDA)
+
+GPU acceleration uses the official pre-built CUDA image from llama.cpp.
+
+### Prerequisites
+
+Install nvidia-container-toolkit on your host:
+
+```bash
+# Ubuntu/Debian
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+### Usage
+
+Add the `--gpu` flag to any run command:
+
+```bash
+./scripts/run.sh --gpu --model qwen3-4b --kv q8 --dataset swe-lite
+./scripts/run.sh --gpu -m qwen3-4b -k f16 -d swe-lite server
+```
+
+GPU mode:
+- Uses pre-built `ghcr.io/ggml-org/llama.cpp:server-cuda` (no local build needed)
+- Offloads all model layers to GPU (`--n-gpu-layers 999`)
+- Enables flash attention for better performance
+- Ignores CPU thread settings (irrelevant for GPU inference)
+
+### VRAM Requirements (32K context)
+
+| Model | Weights (Q4) | F16 KV | Q8 KV | Q4 KV | Minimum VRAM |
+|-------|--------------|--------|-------|-------|--------------|
+| Qwen3-4B | 2.5GB | 4.6GB | 2.3GB | 1.2GB | **8GB** |
+| Qwen3-14B | 8GB | 4.6GB | 2.3GB | 1.2GB | **16GB** |
+| Qwen3-32B | 19GB | 4.6GB | 2.3GB | 1.2GB | **24GB** |
 
 ## Configuration System
 

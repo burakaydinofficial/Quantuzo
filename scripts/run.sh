@@ -14,6 +14,7 @@ MODEL=""
 KV=""
 DATASET=""
 FILTER=""
+USE_GPU=""
 COMMAND="both"
 
 # Parse arguments
@@ -35,6 +36,10 @@ while [[ $# -gt 0 ]]; do
             FILTER="$2"
             shift 2
             ;;
+        --gpu)
+            USE_GPU="1"
+            shift
+            ;;
         generate|evaluate|both|server|stop|logs|status)
             COMMAND="$1"
             shift
@@ -51,6 +56,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Optional arguments:"
             echo "  --filter, -f FILTER    Instance filter (pipe-separated instance IDs)"
+            echo "  --gpu                  Use NVIDIA GPU acceleration (requires nvidia-container-toolkit)"
             echo ""
             echo "Commands:"
             echo "  generate    Run patch generation only"
@@ -148,6 +154,12 @@ if [[ -n "$FILTER" ]]; then
     export INSTANCE_FILTER="$FILTER"
 fi
 
+# Build docker compose command with optional GPU override
+COMPOSE_CMD="docker compose"
+if [[ -n "$USE_GPU" ]]; then
+    COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.gpu.yml"
+fi
+
 # Generate timestamp
 TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
 
@@ -182,6 +194,13 @@ GIT_NAME=$(git config user.name 2>/dev/null || echo "unknown")
 GIT_EMAIL=$(git config user.email 2>/dev/null || echo "unknown")
 HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
 
+# Determine acceleration type
+if [[ -n "$USE_GPU" ]]; then
+    ACCEL_TYPE="gpu"
+else
+    ACCEL_TYPE="cpu"
+fi
+
 # Write metadata file (standard format for all benchmarks)
 cat > "$RESULTS_DIR/metadata.json" << EOF
 {
@@ -200,6 +219,7 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
     "file": "$MODEL_FILE"
   },
   "inference": {
+    "accelerator": "$ACCEL_TYPE",
     "ctx_size": $CTX_SIZE,
     "threads": $THREADS,
     "threads_batch": $THREADS_BATCH,
@@ -228,7 +248,11 @@ echo "Model:       $MODEL_NAME ($MODEL_FILE)"
 echo "KV Cache:    K:$KV_TYPE_K / V:$KV_TYPE_V"
 echo "Dataset:     $DATASET_NAME"
 echo "Context:     $CTX_SIZE"
-echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
+if [[ -n "$USE_GPU" ]]; then
+    echo "Accelerator: GPU (CUDA)"
+else
+    echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
+fi
 echo "Contributor: $GIT_NAME <$GIT_EMAIL>"
 echo "RUN_ID:      $RUN_ID"
 if [[ -n "$INSTANCE_FILTER" ]]; then
@@ -240,18 +264,18 @@ echo ""
 case "$COMMAND" in
     server)
         log "Starting llama-server"
-        docker compose up llama-server
+        $COMPOSE_CMD up llama-server
         ;;
 
     generate)
         log "Starting patch generation"
-        docker compose --profile generate up --abort-on-container-exit
+        $COMPOSE_CMD --profile generate up --abort-on-container-exit
         log "Patch generation completed"
         ;;
 
     evaluate)
         log "Starting evaluation"
-        docker compose --profile evaluate up --abort-on-container-exit
+        $COMPOSE_CMD --profile evaluate up --abort-on-container-exit
         log "Evaluation completed"
         ;;
 
@@ -260,14 +284,14 @@ case "$COMMAND" in
 
         # Generate patches
         log "Phase 1: Patch generation"
-        docker compose --profile generate up --abort-on-container-exit
+        $COMPOSE_CMD --profile generate up --abort-on-container-exit
 
         # Stop llama-server to free memory
-        docker compose down llama-server
+        $COMPOSE_CMD down llama-server
 
         # Run evaluation
         log "Phase 2: Evaluation"
-        docker compose --profile evaluate up --abort-on-container-exit
+        $COMPOSE_CMD --profile evaluate up --abort-on-container-exit
 
         log "Full pipeline completed"
         log "Results available at: $RESULTS_DIR"
