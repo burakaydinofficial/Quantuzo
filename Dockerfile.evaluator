@@ -8,11 +8,18 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install SWE-bench from GitHub (package is named 'swebench')
-RUN pip install --no-cache-dir \
-    datasets \
-    huggingface_hub \
-    && pip install --no-cache-dir "swebench @ git+https://github.com/princeton-nlp/SWE-bench.git"
+# Install dependencies
+RUN pip install --no-cache-dir datasets huggingface_hub
+
+# Clone SWE-bench repo at pinned version (v3.0.17 - last version before Rust support)
+# v4.x has broken Rust fixtures (tokio-rs Cargo.lock missing), fix not tagged yet
+RUN git clone --depth 1 --branch v3.0.17 https://github.com/princeton-nlp/SWE-bench.git /swebench
+
+# Install SWE-bench in editable mode to keep fixtures accessible
+WORKDIR /swebench
+RUN pip install --no-cache-dir -e .
+
+WORKDIR /app
 
 # Create results directory mount point
 RUN mkdir -p /results
