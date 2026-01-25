@@ -282,16 +282,50 @@ case "$COMMAND" in
     both)
         log "Starting full pipeline"
 
-        # Generate patches
-        log "Phase 1: Patch generation"
-        $COMPOSE_CMD --profile generate up --abort-on-container-exit
+        # Check if llama-server is already running and healthy
+        SERVER_WAS_RUNNING=""
+        if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; then
+            log "Using existing llama-server (healthy)"
+            SERVER_WAS_RUNNING="1"
+        else
+            log "Starting llama-server (detached)"
+            $COMPOSE_CMD up -d llama-server
 
-        # Stop llama-server to free memory
-        $COMPOSE_CMD down llama-server
+            # Wait for server to be healthy (up to 5 minutes for model loading)
+            log "Waiting for llama-server to be ready..."
+            WAIT_COUNT=0
+            MAX_WAIT=60  # 60 * 5 seconds = 5 minutes
+            until $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; do
+                # Check if container exited
+                if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "Exited"; then
+                    log "ERROR: llama-server exited unexpectedly"
+                    $COMPOSE_CMD logs llama-server --tail 50
+                    exit 1
+                fi
+                WAIT_COUNT=$((WAIT_COUNT + 1))
+                if [[ $WAIT_COUNT -ge $MAX_WAIT ]]; then
+                    log "ERROR: llama-server health check timeout"
+                    $COMPOSE_CMD logs llama-server --tail 50
+                    exit 1
+                fi
+                sleep 5
+            done
+            log "llama-server is ready"
+        fi
+
+        # Generate patches (only swe-agent output)
+        log "Phase 1: Patch generation"
+        $COMPOSE_CMD --profile generate up swe-agent
+
+        # Stop llama-server only if we started it
+        if [[ -z "$SERVER_WAS_RUNNING" ]]; then
+            log "Stopping llama-server to free memory"
+            $COMPOSE_CMD stop llama-server
+        fi
 
         # Run evaluation
         log "Phase 2: Evaluation"
-        $COMPOSE_CMD --profile evaluate up --abort-on-container-exit
+        $COMPOSE_CMD --profile evaluate up evaluator
 
         log "Full pipeline completed"
         log "Results available at: $RESULTS_DIR"
