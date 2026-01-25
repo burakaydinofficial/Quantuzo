@@ -113,8 +113,16 @@ def main():
             with open(report_file) as f:
                 report = json.load(f)
                 print(f"Found report: {report_file}")
-                # New format has resolved/unresolved/error lists
-                if "resolved" in report and isinstance(report["resolved"], list):
+
+                # v3.0.17 format uses *_ids suffix (schema_version: 2)
+                if "resolved_ids" in report:
+                    results_summary["resolved"] = len(report.get("resolved_ids", []))
+                    results_summary["failed"] = len(report.get("unresolved_ids", []))
+                    results_summary["error"] = len(report.get("error_ids", []))
+                    results_summary["instances"] = report
+                    report_found = True
+                # Older format without _ids suffix
+                elif "resolved" in report and isinstance(report["resolved"], list):
                     results_summary["resolved"] = len(report["resolved"])
                     results_summary["failed"] = len(report.get("unresolved", []))
                     results_summary["error"] = len(report.get("error", []))
