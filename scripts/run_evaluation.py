@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 
@@ -79,6 +80,7 @@ def main():
     results_summary = {
         "run_id": run_id,
         "dataset": dataset_name,
+        "swebench_version": version("swebench"),
         "total_instances": len(patches),
         "predictions_submitted": len(swebench_predictions),
         "resolved": 0,
