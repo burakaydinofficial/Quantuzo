@@ -154,12 +154,12 @@ def main():
     }
 
     # Look for evaluation results
-    # SWE-bench writes report to current dir as {model}.{run_id}.json
+    # SWE-bench writes report to --report_dir if specified, otherwise CWD
     eval_results_dir = results_dir / "logs"
     search_dirs = [
-        Path.cwd(),                 # current working directory (where swebench writes)
-        eval_results_dir,           # --report_dir location
-        results_dir,                # results directory
+        eval_results_dir,           # --report_dir location (check first)
+        Path.cwd(),                 # current working directory (fallback)
+        results_dir,                # results directory (another fallback)
     ]
 
     # Report filename patterns
