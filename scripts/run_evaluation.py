@@ -89,32 +89,43 @@ def main():
         "instances": []
     }
 
-    # Look for evaluation results - new SWE-bench outputs to report_dir
+    # Look for evaluation results
+    # swebench may write to report_dir, current dir, or results_dir
     eval_results_dir = results_dir / "logs"
+    search_dirs = [
+        eval_results_dir,           # --report_dir location
+        Path.cwd(),                 # current working directory
+        results_dir,                # results directory
+    ]
 
-    # Try to find the main report file (new format)
-    # SWE-bench v4.1.0 writes: {model_name}.{run_id}.json
+    # Try to find the main report file
+    # Format: {model_name}.{run_id}.json
     report_found = False
     report_patterns = [
-        f"*.{run_id}.json",  # New format: model.run_id.json
+        f"*.{run_id}.json",  # model.run_id.json
         "report.json",
         f"{run_id}.json",
         "results.json",
     ]
 
-    for pattern in report_patterns:
-        matching_files = list(eval_results_dir.glob(pattern))
-        if matching_files:
-            report_file = matching_files[0]
+    report_file = None
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+        for pattern in report_patterns:
+            matching_files = list(search_dir.glob(pattern))
+            if matching_files:
+                report_file = matching_files[0]
+                break
+        if report_file:
             break
-    else:
-        report_file = None
 
     if report_file and report_file.exists():
         try:
             with open(report_file) as f:
                 report = json.load(f)
                 print(f"Found report: {report_file}")
+                print(f"Report keys: {list(report.keys())}")
 
                 # v3.0.17 format uses *_ids suffix (schema_version: 2)
                 if "resolved_ids" in report:
@@ -132,6 +143,9 @@ def main():
                     report_found = True
         except Exception as e:
             print(f"Error reading {report_file}: {e}")
+    else:
+        print(f"No report file found. Searched in: {[str(d) for d in search_dirs]}")
+        print(f"Patterns: {report_patterns}")
 
     # Fallback: search recursively for per-instance results
     if not report_found and eval_results_dir.exists():
