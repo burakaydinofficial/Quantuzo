@@ -285,7 +285,15 @@ case "$COMMAND" in
         # Check if llama-server is already running and healthy
         SERVER_WAS_RUNNING=""
         if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; then
-            log "Using existing llama-server (healthy)"
+            echo ""
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            echo "WARNING: llama-server is already running!"
+            echo "The EXISTING server's KV config will be used, NOT: K:$KV_TYPE_K / V:$KV_TYPE_V"
+            echo "To use the requested KV config, stop the server first:"
+            echo "  ./scripts/run.sh stop"
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            echo ""
+            log "Using existing llama-server (healthy) - WARNING: KV config may not match!"
             SERVER_WAS_RUNNING="1"
         else
             log "Starting llama-server (detached)"
