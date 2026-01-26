@@ -15,6 +15,7 @@ KV=""
 DATASET=""
 FILTER=""
 USE_GPU=""
+USE_CPU=""
 COMMAND="both"
 
 # Parse arguments
@@ -40,6 +41,10 @@ while [[ $# -gt 0 ]]; do
             USE_GPU="1"
             shift
             ;;
+        --cpu)
+            USE_CPU="1"
+            shift
+            ;;
         generate|evaluate|both|server|stop|logs|status)
             COMMAND="$1"
             shift
@@ -57,6 +62,7 @@ while [[ $# -gt 0 ]]; do
             echo "Optional arguments:"
             echo "  --filter, -f FILTER    Instance filter (pipe-separated instance IDs)"
             echo "  --gpu                  Use NVIDIA GPU acceleration (requires nvidia-container-toolkit)"
+            echo "  --cpu                  Use extended timeouts for slow CPU inference"
             echo ""
             echo "Commands:"
             echo "  generate    Run patch generation only"
@@ -169,10 +175,12 @@ cat > "$PROJECT_DIR/config/mini-swe-agent/registry.json" << EOF
 }
 EOF
 
-# Build docker compose command with optional GPU override
+# Build docker compose command with optional overrides
 COMPOSE_CMD="docker compose"
 if [[ -n "$USE_GPU" ]]; then
     COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.gpu.yml"
+elif [[ -n "$USE_CPU" ]]; then
+    COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.cpu.yml"
 fi
 
 # Generate timestamp
@@ -251,6 +259,9 @@ echo "Dataset:     $DATASET_NAME"
 echo "Context:     $CTX_SIZE"
 if [[ -n "$USE_GPU" ]]; then
     echo "Accelerator: GPU (CUDA)"
+elif [[ -n "$USE_CPU" ]]; then
+    echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
+    echo "Mode:        CPU (extended timeouts)"
 else
     echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
 fi
