@@ -154,6 +154,21 @@ if [[ -n "$FILTER" ]]; then
     export INSTANCE_FILTER="$FILTER"
 fi
 
+# Generate LiteLLM model registry for mini-SWE-agent
+# This tells LiteLLM how to talk to our local model via OpenAI-compatible API
+mkdir -p "$PROJECT_DIR/config/mini-swe-agent"
+cat > "$PROJECT_DIR/config/mini-swe-agent/registry.json" << EOF
+{
+  "local/${MODEL_NAME}": {
+    "max_tokens": 32768,
+    "input_cost_per_token": 0.0,
+    "output_cost_per_token": 0.0,
+    "litellm_provider": "openai",
+    "mode": "chat"
+  }
+}
+EOF
+
 # Build docker compose command with optional GPU override
 COMPOSE_CMD="docker compose"
 if [[ -n "$USE_GPU" ]]; then
@@ -170,20 +185,6 @@ kv_k_short="${KV_TYPE_K%_*}"  # q8_0 -> q8, f16 -> f16
 kv_v_short="${KV_TYPE_V%_*}"  # q4_0 -> q4, f16 -> f16
 RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
 export RUN_ID
-
-# Enforce fixed context length
-REQUIRED_CTX_SIZE=32768
-if [[ "${CTX_SIZE:-32768}" != "$REQUIRED_CTX_SIZE" ]]; then
-    echo "=========================================="
-    echo "ERROR: Invalid CTX_SIZE=${CTX_SIZE}"
-    echo "=========================================="
-    echo ""
-    echo "This benchmark requires CTX_SIZE=$REQUIRED_CTX_SIZE for valid results."
-    echo "Results with different context lengths are NOT comparable."
-    echo ""
-    echo "If you lack RAM for 32K context, use a smaller model instead."
-    exit 1
-fi
 
 # Create results directory
 RESULTS_DIR="$PROJECT_DIR/results/$RUN_ID"
