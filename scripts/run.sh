@@ -162,17 +162,26 @@ fi
 
 # Generate LiteLLM model registry for mini-SWE-agent
 # This tells LiteLLM how to talk to our local model via OpenAI-compatible API
+# max_tokens limits output per response to prevent runaway generation
 mkdir -p "$PROJECT_DIR/config/mini-swe-agent"
 cat > "$PROJECT_DIR/config/mini-swe-agent/registry.json" << EOF
 {
   "local/${MODEL_NAME}": {
-    "max_tokens": 32768,
+    "max_tokens": 8192,
     "input_cost_per_token": 0.0,
     "output_cost_per_token": 0.0,
     "litellm_provider": "openai",
     "mode": "chat"
   }
 }
+EOF
+
+# Generate custom swebench config with step_limit
+# step_limit: 100 prevents context overflow (250 default is too high for 64K context)
+cat > "$PROJECT_DIR/config/mini-swe-agent/swebench.yaml" << 'EOF'
+agent:
+  step_limit: 100
+  cost_limit: 0
 EOF
 
 # Build docker compose command with optional overrides

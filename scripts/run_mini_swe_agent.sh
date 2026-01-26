@@ -1,6 +1,6 @@
 #!/bin/bash
 # Wrapper script for mini-SWE-agent
-# Handles conditional --filter argument
+# Handles conditional arguments and custom config
 
 set -e
 
@@ -10,6 +10,11 @@ CMD="$CMD --model local/${MODEL_NAME:-qwen3-4b}"
 CMD="$CMD --subset ${SUBSET:-lite}"
 CMD="$CMD --split test"
 CMD="$CMD --output /results/${RUN_ID:-default}"
+
+# Use custom config if available (sets step_limit, cost_limit)
+if [[ -f "/app/config/swebench.yaml" ]]; then
+    CMD="$CMD --config /app/config/swebench.yaml"
+fi
 
 # Add filter only if set
 if [[ -n "$INSTANCE_FILTER" ]]; then
