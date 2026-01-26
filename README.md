@@ -24,8 +24,19 @@ mkdir -p models
 docker compose build
 
 # 3. Run benchmark
-./scripts/run.sh --model qwen3-4b --kv f16 --dataset swe-lite
+./scripts/run.sh --model qwen3-4b-instruct-2507 --kv f16 --dataset swe-lite
 ```
+
+## How It Works
+
+This benchmark uses [mini-SWE-agent](https://github.com/SWE-agent/mini-swe-agent) for patch generation - a lightweight (~100 lines) but effective coding agent that:
+
+1. **Clones the target repository** in a sandboxed container
+2. **Lets the model browse files** via bash commands (cat, grep, find)
+3. **Makes iterative edits** based on model decisions
+4. **Generates patches via `git diff`** - real diffs, not LLM-imagined text
+
+This is the same approach used by top SWE-bench submissions (74%+ on Verified).
 
 ## Hardware Requirements
 
@@ -48,10 +59,6 @@ docker compose build
 | Qwen3-32B | 19GB | 4.6GB | 2.3GB | 1.2GB | **32GB** |
 
 If your system doesn't meet the minimum RAM for your target model, **use a smaller model** - do not reduce context length.
-
-### Tested Configurations
-- AMD Ryzen 9 5950X (16C/32T) + 96GB DDR4-3200
-- Intel Core Ultra 7 155H + 80GB LPDDR5x-5600
 
 ## Build Options
 
@@ -93,8 +100,8 @@ sudo systemctl restart docker
 Add the `--gpu` flag to any run command:
 
 ```bash
-./scripts/run.sh --gpu --model qwen3-4b --kv q8 --dataset swe-lite
-./scripts/run.sh --gpu -m qwen3-4b -k f16 -d swe-lite server
+./scripts/run.sh --gpu --model qwen3-4b-instruct-2507 --kv q8 --dataset swe-lite
+./scripts/run.sh --gpu -m qwen3-4b-instruct-2507 -k f16 -d swe-lite server
 ```
 
 GPU mode:
@@ -119,9 +126,7 @@ Configuration is split into four independent layers:
 spec/
 ├── runtime.conf              # CTX_SIZE, THREADS, EVAL_WORKERS
 ├── models/
-│   ├── qwen3-4b.conf         # MODEL_FILE, MODEL_NAME
-│   ├── qwen3-14b.conf
-│   └── qwen3-32b.conf
+│   └── qwen3-4b-instruct-2507.conf  # MODEL_FILE, MODEL_NAME
 ├── quantization/
 │   ├── f16.conf              # KV_TYPE_K, KV_TYPE_V
 │   ├── q8.conf
@@ -129,7 +134,7 @@ spec/
 │   ├── q8-q4.conf
 │   └── q4.conf
 └── datasets/
-    ├── swe-lite.conf         # DATASET, DATASET_NAME
+    ├── swe-lite.conf         # DATASET, DATASET_NAME, SUBSET
     └── swe-full.conf
 ```
 
@@ -139,22 +144,22 @@ spec/
 
 ```bash
 # Full pipeline
-./scripts/run.sh --model qwen3-4b --kv q8 --dataset swe-lite
+./scripts/run.sh --model qwen3-4b-instruct-2507 --kv q8 --dataset swe-lite
 
 # Short flags
-./scripts/run.sh -m qwen3-4b -k q8 -d swe-lite
+./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite
 
 # Generate patches only
-./scripts/run.sh -m qwen3-4b -k q8 -d swe-lite generate
+./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite generate
 
 # Evaluate existing patches
-./scripts/run.sh -m qwen3-4b -k q8 -d swe-lite evaluate
+./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite evaluate
 
 # Quick validation with instance filter
-./scripts/run.sh -m qwen3-4b -k f16 -d swe-lite --filter "django__django-11099|django__django-11179"
+./scripts/run.sh -m qwen3-4b-instruct-2507 -k f16 -d swe-lite --filter "django__django-11099|django__django-11179"
 
 # Start llama-server for testing
-./scripts/run.sh -m qwen3-4b -k q8 -d swe-lite server
+./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite server
 
 # Utility commands (no config required)
 ./scripts/run.sh stop      # Stop all services
@@ -162,7 +167,7 @@ spec/
 ./scripts/run.sh status    # Show containers + memory
 
 # Run all KV configurations for a model
-./scripts/run_all.sh --model qwen3-4b
+./scripts/run_all.sh --model qwen3-4b-instruct-2507
 
 # Analyze results
 python scripts/analyze_results.py
@@ -178,10 +183,11 @@ python scripts/analyze_results.py --export-chart results.svg
 Each run creates a timestamped folder with standardized metadata:
 
 ```
-results/swe-lite-qwen3-4b-kv-q8-q8-20240115_143052/
+results/swe-lite-qwen3-4b-instruct-2507-kv-q8-q8-20240115_143052/
 ├── metadata.json             # Standard format (contributor, config, timestamps)
-├── patches.json              # Generated patches (SWE-bench format)
-└── evaluation_results.json   # Evaluation results (SWE-bench format)
+├── preds.json                # mini-SWE-agent output
+├── swebench_predictions.json # Converted for SWE-bench harness
+└── evaluation_results.json   # Evaluation results
 ```
 
 **metadata.json** is our standard format - consistent across all benchmark types:
@@ -189,19 +195,17 @@ results/swe-lite-qwen3-4b-kv-q8-q8-20240115_143052/
 {
   "version": "1.0",
   "timestamp": "2024-01-15T14:30:52Z",
-  "run_id": "swe-lite-qwen3-4b-kv-q8-q8-20240115_143052",
+  "run_id": "swe-lite-qwen3-4b-instruct-2507-kv-q8-q8-20240115_143052",
   "benchmark": "swe-bench-lite",
   "contributor": {
     "name": "John Doe",
     "email": "john@example.com",
     "hostname": "johns-macbook"
   },
-  "model": { "name": "qwen3-4b", "file": "qwen3-4b-instruct-q4_k_m.gguf" },
+  "model": { "name": "qwen3-4b-instruct-2507", "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" },
   "inference": { "ctx_size": 32768, "kv_type_k": "q8_0", "kv_type_v": "q8_0", ... }
 }
 ```
-
-Other files (patches.json, evaluation_results.json) use native SWE-bench format.
 
 ## Contributing Results
 
@@ -228,7 +232,20 @@ To contribute:
    EOF
    ```
 
-3. Run benchmarks:
+3. Add to mini-SWE-agent registry (`config/mini-swe-agent/registry.json`):
+   ```json
+   {
+     "local/qwen3-14b": {
+       "max_tokens": 32768,
+       "input_cost_per_token": 0.0,
+       "output_cost_per_token": 0.0,
+       "litellm_provider": "openai",
+       "mode": "chat"
+     }
+   }
+   ```
+
+4. Run benchmarks:
    ```bash
    ./scripts/run_all.sh --model qwen3-14b
    ```
@@ -253,8 +270,9 @@ Host
 └── Docker Compose
     ├── llama-server (llama.cpp with configurable KV cache)
     │   └── Exposes OpenAI-compatible API on port 8080
-    ├── swe-agent (patch generation)
-    │   └── Connects to llama-server via /v1/chat/completions
+    ├── swe-agent (mini-SWE-agent for patch generation)
+    │   ├── Connects to llama-server via /v1/chat/completions
+    │   └── Mounts docker.sock for sandboxed execution
     └── evaluator (SWE-bench harness)
         └── Mounts docker.sock to spawn test containers
 ```

@@ -36,21 +36,28 @@ services:
   swe-agent:
     build:
       context: .
-      dockerfile: Dockerfile.swe-agent
+      dockerfile: Dockerfile.mini-swe-agent
     environment:
       - OPENAI_API_BASE=http://llama-server:8080/v1
       - OPENAI_API_KEY=dummy
+      - LITELLM_MODEL_REGISTRY_PATH=/app/config/registry.json
+      - MSWEA_COST_TRACKING=ignore_errors
       - MODEL_NAME=${MODEL_NAME:-qwen3-4b}
       - RUN_ID=${RUN_ID:-default}
-      - DATASET=${DATASET:-princeton-nlp/SWE-bench_Lite}
-      - INSTANCE_FILTER=${INSTANCE_FILTER:-}
+      - SUBSET=${SUBSET:-lite}
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./results:/results
     depends_on:
       llama-server:
         condition: service_healthy
     profiles:
       - generate
+    command: >
+      --model local/${MODEL_NAME:-qwen3-4b}
+      --subset ${SUBSET:-lite}
+      --split test
+      --output /results/${RUN_ID:-default}/preds.json
 
   evaluator:
     build:

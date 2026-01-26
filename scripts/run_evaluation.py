@@ -2,6 +2,10 @@
 """
 SWE-bench evaluation runner.
 Evaluates generated patches using the SWE-bench harness.
+
+Supports both:
+- mini-SWE-agent format: preds.json (dict keyed by instance_id)
+- Legacy format: patches.json (list of patch objects)
 """
 
 import json
@@ -12,6 +16,46 @@ from importlib.metadata import version
 from pathlib import Path
 
 
+def load_patches(results_dir: Path) -> list[dict]:
+    """
+    Load patches from either mini-SWE-agent or legacy format.
+    Returns list of patch objects in SWE-bench format.
+    """
+    # Try mini-SWE-agent format first (preds.json as dict)
+    preds_file = results_dir / "preds.json"
+    if preds_file.exists():
+        with open(preds_file) as f:
+            data = json.load(f)
+
+        # mini-SWE-agent outputs dict: {instance_id: {model_patch, ...}}
+        if isinstance(data, dict):
+            patches = []
+            for instance_id, patch_data in data.items():
+                patches.append({
+                    "instance_id": instance_id,
+                    "model_name_or_path": patch_data.get("model_name_or_path", "unknown"),
+                    "model_patch": patch_data.get("model_patch", ""),
+                    "status": "success" if patch_data.get("model_patch") else "empty"
+                })
+            print(f"Loaded {len(patches)} patches from preds.json (mini-SWE-agent format)")
+            return patches
+
+        # preds.json might also be a list (converted format)
+        if isinstance(data, list):
+            print(f"Loaded {len(data)} patches from preds.json (list format)")
+            return data
+
+    # Fall back to legacy patches.json format
+    patches_file = results_dir / "patches.json"
+    if patches_file.exists():
+        with open(patches_file) as f:
+            patches = json.load(f)
+        print(f"Loaded {len(patches)} patches from patches.json (legacy format)")
+        return patches
+
+    return []
+
+
 def main():
     # Configuration from environment
     run_id = os.environ.get("RUN_ID", "default")
@@ -19,33 +63,33 @@ def main():
     eval_workers = int(os.environ.get("EVAL_WORKERS", "8"))
 
     results_dir = Path("/results") / run_id
-    patches_file = results_dir / "patches.json"
     output_file = results_dir / "evaluation_results.json"
 
     print(f"SWE-bench Evaluator")
     print(f"  Run ID: {run_id}")
     print(f"  Dataset: {dataset_name}")
     print(f"  Workers: {eval_workers}")
-    print(f"  Patches: {patches_file}")
+    print(f"  Results dir: {results_dir}")
 
-    if not patches_file.exists():
-        print(f"Error: Patches file not found: {patches_file}")
+    # Load patches (supports both formats)
+    patches = load_patches(results_dir)
+
+    if not patches:
+        print(f"Error: No patches found in {results_dir}")
+        print(f"  Looked for: preds.json, patches.json")
         sys.exit(1)
 
-    # Load patches
-    with open(patches_file) as f:
-        patches = json.load(f)
+    print(f"Total patches loaded: {len(patches)}")
 
-    print(f"Loaded {len(patches)} patches")
-
-    # Convert to SWE-bench format
+    # Convert to SWE-bench format (filter to successful patches with content)
     swebench_predictions = []
     for patch in patches:
-        if patch.get("status") == "success" and patch.get("model_patch"):
+        model_patch = patch.get("model_patch", "")
+        if model_patch and model_patch.strip():
             swebench_predictions.append({
                 "instance_id": patch["instance_id"],
                 "model_name_or_path": patch.get("model_name_or_path", "unknown"),
-                "model_patch": patch["model_patch"]
+                "model_patch": model_patch
             })
 
     predictions_file = results_dir / "swebench_predictions.json"
@@ -54,7 +98,27 @@ def main():
 
     print(f"Prepared {len(swebench_predictions)} predictions for evaluation")
 
-    # Run SWE-bench evaluation (new API as of 2025)
+    if len(swebench_predictions) == 0:
+        print("Warning: No valid patches to evaluate")
+        # Write empty results
+        results_summary = {
+            "run_id": run_id,
+            "dataset": dataset_name,
+            "swebench_version": version("swebench"),
+            "total_instances": len(patches),
+            "predictions_submitted": 0,
+            "resolved": 0,
+            "failed": 0,
+            "error": 0,
+            "resolution_rate": 0.0,
+            "instances": []
+        }
+        with open(output_file, "w") as f:
+            json.dump(results_summary, f, indent=2)
+        print(f"Results saved to: {output_file}")
+        return
+
+    # Run SWE-bench evaluation
     try:
         cmd = [
             "python", "-m", "swebench.harness.run_evaluation",
@@ -90,21 +154,19 @@ def main():
     }
 
     # Look for evaluation results
-    # swebench may write to report_dir, current dir, or results_dir
+    # SWE-bench writes report to current dir as {model}.{run_id}.json
     eval_results_dir = results_dir / "logs"
     search_dirs = [
+        Path.cwd(),                 # current working directory (where swebench writes)
         eval_results_dir,           # --report_dir location
-        Path.cwd(),                 # current working directory
         results_dir,                # results directory
     ]
 
-    # Try to find the main report file
-    # Format: {model_name}.{run_id}.json
-    report_found = False
+    # Report filename patterns
     report_patterns = [
-        f"*.{run_id}.json",  # model.run_id.json
-        "report.json",
+        f"*.{run_id}.json",         # model.run_id.json (standard format)
         f"{run_id}.json",
+        "report.json",
         "results.json",
     ]
 
@@ -116,6 +178,7 @@ def main():
             matching_files = list(search_dir.glob(pattern))
             if matching_files:
                 report_file = matching_files[0]
+                print(f"Found report file: {report_file}")
                 break
         if report_file:
             break
@@ -124,7 +187,6 @@ def main():
         try:
             with open(report_file) as f:
                 report = json.load(f)
-                print(f"Found report: {report_file}")
                 print(f"Report keys: {list(report.keys())}")
 
                 # v3.0.17 format uses *_ids suffix (schema_version: 2)
@@ -133,64 +195,50 @@ def main():
                     results_summary["failed"] = len(report.get("unresolved_ids", []))
                     results_summary["error"] = len(report.get("error_ids", []))
                     results_summary["instances"] = report
-                    report_found = True
                 # Older format without _ids suffix
                 elif "resolved" in report and isinstance(report["resolved"], list):
                     results_summary["resolved"] = len(report["resolved"])
                     results_summary["failed"] = len(report.get("unresolved", []))
                     results_summary["error"] = len(report.get("error", []))
                     results_summary["instances"] = report
-                    report_found = True
+
+            # Copy report file to results dir for preservation
+            if report_file.parent != results_dir:
+                import shutil
+                dest = results_dir / report_file.name
+                shutil.copy(report_file, dest)
+                print(f"Copied report to: {dest}")
+
         except Exception as e:
             print(f"Error reading {report_file}: {e}")
     else:
-        print(f"No report file found. Searched in: {[str(d) for d in search_dirs]}")
-        print(f"Patterns: {report_patterns}")
+        print(f"No report file found.")
+        print(f"  Searched dirs: {[str(d) for d in search_dirs]}")
+        print(f"  Patterns: {report_patterns}")
 
-    # Fallback: search recursively for per-instance results
-    if not report_found and eval_results_dir.exists():
-        for result_file in eval_results_dir.glob("**/*.json"):
-            try:
-                with open(result_file) as f:
-                    instance_result = json.load(f)
-
-                    # Handle different result formats
-                    if "resolved" in instance_result:
-                        results_summary["instances"].append(instance_result)
-                        if instance_result.get("resolved"):
-                            results_summary["resolved"] += 1
-                        else:
-                            results_summary["failed"] += 1
-                    elif "status" in instance_result:
-                        results_summary["instances"].append(instance_result)
-                        status = instance_result["status"]
-                        if status == "resolved":
-                            results_summary["resolved"] += 1
-                        elif status == "error":
-                            results_summary["error"] += 1
-                        else:
-                            results_summary["failed"] += 1
-            except Exception as e:
-                # Skip non-JSON or malformed files
-                pass
-
-    # If still no results, check for run_instance.log files
-    if results_summary["resolved"] == 0 and results_summary["failed"] == 0 and results_summary["error"] == 0:
-        for log_file in eval_results_dir.glob("**/run_instance.log"):
-            try:
-                content = log_file.read_text()
-                instance_id = log_file.parent.name
-                if "Patch Apply Failed" in content or "FAILED" in content:
-                    results_summary["error"] += 1
-                    results_summary["instances"].append({"instance_id": instance_id, "status": "error"})
-                elif "PASSED" in content:
-                    results_summary["resolved"] += 1
-                    results_summary["instances"].append({"instance_id": instance_id, "status": "resolved"})
-                else:
-                    results_summary["failed"] += 1
-                    results_summary["instances"].append({"instance_id": instance_id, "status": "failed"})
-            except Exception as e:
-                pass
+        # Fallback: search for per-instance results in logs
+        if eval_results_dir.exists():
+            for result_file in eval_results_dir.glob("**/*.json"):
+                try:
+                    with open(result_file) as f:
+                        instance_result = json.load(f)
+                        if "resolved" in instance_result:
+                            results_summary["instances"].append(instance_result)
+                            if instance_result.get("resolved"):
+                                results_summary["resolved"] += 1
+                            else:
+                                results_summary["failed"] += 1
+                        elif "status" in instance_result:
+                            results_summary["instances"].append(instance_result)
+                            status = instance_result["status"]
+                            if status == "resolved":
+                                results_summary["resolved"] += 1
+                            elif status == "error":
+                                results_summary["error"] += 1
+                            else:
+                                results_summary["failed"] += 1
+                except Exception:
+                    pass
 
     # Calculate resolution rate
     if results_summary["total_instances"] > 0:
@@ -208,8 +256,10 @@ def main():
     print(f"Evaluation Complete")
     print(f"{'='*50}")
     print(f"Total instances: {results_summary['total_instances']}")
+    print(f"Predictions submitted: {results_summary['predictions_submitted']}")
     print(f"Resolved: {results_summary['resolved']}")
     print(f"Failed: {results_summary['failed']}")
+    print(f"Errors: {results_summary['error']}")
     print(f"Resolution rate: {results_summary['resolution_rate']:.1f}%")
     print(f"\nResults saved to: {output_file}")
 
