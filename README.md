@@ -42,23 +42,21 @@ This is the same approach used by top SWE-bench submissions (74%+ on Verified).
 
 **Supports:** CPU and NVIDIA GPU inference
 
-### Mandatory Parameters
+### Context Length
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Context Length | 32768 | Fixed for all benchmark runs |
+Default is 64K tokens (65536). This can be adjusted in `spec/runtime.conf`.
 
-**Context length is NOT configurable.** All valid benchmark results must use 32K context. Reducing context length invalidates comparisons and results cannot be submitted.
+**Note:** Results with different context sizes are not directly comparable. When comparing KV quantization levels, use the same context size for all runs.
 
-### Minimum RAM Requirements (32K context, mandatory)
+### Minimum RAM Requirements (64K context)
 
 | Model | Weights (Q4) | F16 KV | Q8 KV | Q4 KV | Minimum RAM |
 |-------|--------------|--------|-------|-------|-------------|
-| Qwen3-4B | 2.5GB | 4.6GB | 2.3GB | 1.2GB | **16GB** |
-| Qwen3-14B | 8GB | 4.6GB | 2.3GB | 1.2GB | **24GB** |
-| Qwen3-32B | 19GB | 4.6GB | 2.3GB | 1.2GB | **32GB** |
+| Qwen3-4B | 2.5GB | 9GB | 4.5GB | 2.3GB | **16GB** |
+| Qwen3-14B | 8GB | 9GB | 4.5GB | 2.3GB | **24GB** |
+| Qwen3-32B | 19GB | 9GB | 4.5GB | 2.3GB | **32GB** |
 
-If your system doesn't meet the minimum RAM for your target model, **use a smaller model** - do not reduce context length.
+Memory estimates are approximate. Actual usage depends on model architecture and batch settings.
 
 ## Build Options
 
@@ -110,13 +108,13 @@ GPU mode:
 - Enables flash attention for better performance
 - Ignores CPU thread settings (irrelevant for GPU inference)
 
-### VRAM Requirements (32K context)
+### VRAM Requirements (64K context)
 
 | Model | Weights (Q4) | F16 KV | Q8 KV | Q4 KV | Minimum VRAM |
 |-------|--------------|--------|-------|-------|--------------|
-| Qwen3-4B | 2.5GB | 4.6GB | 2.3GB | 1.2GB | **8GB** |
-| Qwen3-14B | 8GB | 4.6GB | 2.3GB | 1.2GB | **16GB** |
-| Qwen3-32B | 19GB | 4.6GB | 2.3GB | 1.2GB | **24GB** |
+| Qwen3-4B | 2.5GB | 9GB | 4.5GB | 2.3GB | **12GB** |
+| Qwen3-14B | 8GB | 9GB | 4.5GB | 2.3GB | **18GB** |
+| Qwen3-32B | 19GB | 9GB | 4.5GB | 2.3GB | **32GB** |
 
 ## Configuration System
 
@@ -203,7 +201,7 @@ results/swe-lite-qwen3-4b-instruct-2507-kv-q8-q8-20240115_143052/
     "hostname": "johns-macbook"
   },
   "model": { "name": "qwen3-4b-instruct-2507", "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" },
-  "inference": { "ctx_size": 32768, "kv_type_k": "q8_0", "kv_type_v": "q8_0", ... }
+  "inference": { "ctx_size": 65536, "kv_type_k": "q8_0", "kv_type_v": "q8_0", ... }
 }
 ```
 
@@ -232,23 +230,12 @@ To contribute:
    EOF
    ```
 
-3. Add to mini-SWE-agent registry (`config/mini-swe-agent/registry.json`):
-   ```json
-   {
-     "local/qwen3-14b": {
-       "max_tokens": 32768,
-       "input_cost_per_token": 0.0,
-       "output_cost_per_token": 0.0,
-       "litellm_provider": "openai",
-       "mode": "chat"
-     }
-   }
-   ```
-
-4. Run benchmarks:
+3. Run benchmarks:
    ```bash
    ./scripts/run_all.sh --model qwen3-14b
    ```
+
+The LiteLLM model registry is generated automatically at runtime by `run.sh`.
 
 ## Interpreting Results
 
