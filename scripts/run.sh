@@ -176,14 +176,6 @@ cat > "$PROJECT_DIR/config/mini-swe-agent/registry.json" << EOF
 }
 EOF
 
-# Generate custom swebench config with step_limit
-# step_limit: 100 prevents context overflow (250 default is too high for 64K context)
-cat > "$PROJECT_DIR/config/mini-swe-agent/swebench.yaml" << 'EOF'
-agent:
-  step_limit: 100
-  cost_limit: 0
-EOF
-
 # Build docker compose command with optional overrides
 COMPOSE_CMD="docker compose"
 if [[ -n "$USE_GPU" ]]; then
