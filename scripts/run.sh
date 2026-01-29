@@ -233,6 +233,7 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
     "ctx_size": $CTX_SIZE,
     "threads": $THREADS,
     "threads_batch": $THREADS_BATCH,
+    "parallel": ${PARALLEL:-1},
     "kv_type_k": "$KV_TYPE_K",
     "kv_type_v": "$KV_TYPE_V"
   }
@@ -258,6 +259,7 @@ echo "Model:       $MODEL_NAME ($MODEL_FILE)"
 echo "KV Cache:    K:$KV_TYPE_K / V:$KV_TYPE_V"
 echo "Dataset:     $DATASET_NAME"
 echo "Context:     $CTX_SIZE"
+echo "Parallel:    ${PARALLEL:-1} slot(s)"
 if [[ -n "$USE_GPU" ]]; then
     echo "Accelerator: GPU (CUDA)"
 elif [[ -n "$USE_CPU" ]]; then
