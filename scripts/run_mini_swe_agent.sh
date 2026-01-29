@@ -10,6 +10,7 @@ CMD="$CMD --model local/${MODEL_NAME:-qwen3-4b}"
 CMD="$CMD --subset ${SUBSET:-lite}"
 CMD="$CMD --split test"
 CMD="$CMD --output /results/${RUN_ID:-default}"
+CMD="$CMD --workers ${WORKERS:-2}"
 
 # Add filter only if set
 if [[ -n "$INSTANCE_FILTER" ]]; then
