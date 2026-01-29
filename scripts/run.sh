@@ -193,9 +193,9 @@ TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
 
 # Generate RUN_ID with timestamp
 # Format: {dataset}-{model}-kv-{k}-{v}-{timestamp}
-# Extract quantization level: q8_0 -> q8, f16 -> f16
-kv_k_short="${KV_TYPE_K%_*}"  # q8_0 -> q8, f16 -> f16
-kv_v_short="${KV_TYPE_V%_*}"  # q4_0 -> q4, f16 -> f16
+# Use full KV type names to distinguish variants (q5_0 vs q5_1)
+kv_k_short="$KV_TYPE_K"
+kv_v_short="$KV_TYPE_V"
 RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
 export RUN_ID
 
