@@ -167,12 +167,15 @@ export LLAMA_CTX_SIZE=$((CTX_SIZE * ${PARALLEL:-1}))
 # Generate LiteLLM model registry for mini-SWE-agent
 # This tells LiteLLM how to talk to our local model via OpenAI-compatible API
 # max_tokens limits output per response to prevent runaway generation
+# input_cost_per_token is set to a 0.0000012 to limit too many repetative requests which is expected on kv quantization
+# it limits the cumulative input token count in each instanceas 2.500.000 tokens.
+# budget is set to 3 as default, so 3 / 2.500.000 = 0.0000012
 mkdir -p "$PROJECT_DIR/config/mini-swe-agent"
 cat > "$PROJECT_DIR/config/mini-swe-agent/registry.json" << EOF
 {
   "local/${MODEL_NAME}": {
     "max_tokens": 8192,
-    "input_cost_per_token": 0.0,
+    "input_cost_per_token": 0.0000012,
     "output_cost_per_token": 0.0,
     "litellm_provider": "openai",
     "mode": "chat"
