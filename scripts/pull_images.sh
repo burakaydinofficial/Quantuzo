@@ -4,6 +4,8 @@
 # Pre-pulling images prevents timeout failures during patch generation.
 # Uses official SWE-bench Docker Hub registry.
 #
+# Dependencies: Bash + Docker only (Python runs inside container)
+#
 # Usage:
 #   ./scripts/pull_images.sh DATASET [--filter PATTERN]
 #
@@ -69,90 +71,85 @@ echo "Dataset: $DATASET"
 echo "================================================"
 echo ""
 
-# Pass variables via environment to avoid shell expansion issues
-export PULL_DATASET="$DATASET"
-export PULL_FILTER="${FILTER:-}"
+# Get list of instance IDs using Python inside a container
+# This avoids requiring Python/datasets on the host
+echo "Loading dataset (via container)..."
 
-# Run Python script with proper error handling
-if ! python3 << 'PYTHON_SCRIPT'
-import os
+INSTANCE_IDS=$(docker run --rm \
+    -e HF_HUB_DISABLE_PROGRESS_BARS=1 \
+    python:3.11-slim \
+    /bin/bash -c "
+        pip install -q datasets > /dev/null 2>&1
+        python3 << 'PYTHON_SCRIPT'
 import sys
-import subprocess
 from datasets import load_dataset
 
-dataset_name = os.environ.get("PULL_DATASET", "")
-filter_pattern = os.environ.get("PULL_FILTER", "")
-registry = "docker.io/swebench/sweb.eval.x86_64"
+dataset_name = '$DATASET'
+filter_pattern = '$FILTER'
 
-if not dataset_name:
-    print("ERROR: No dataset specified", file=sys.stderr)
-    sys.exit(1)
-
-print(f"Loading dataset {dataset_name}...")
 try:
-    ds = load_dataset(dataset_name, split="test")
+    ds = load_dataset(dataset_name, split='test')
 except Exception as e:
-    print(f"ERROR: Failed to load dataset: {e}", file=sys.stderr)
+    print(f'ERROR: Failed to load dataset: {e}', file=sys.stderr)
     sys.exit(1)
 
-# Collect instances to pull
-instances = []
 for item in ds:
-    iid = item["instance_id"]
-    # Apply filter if specified (supports pipe-separated patterns)
+    iid = item['instance_id']
     if filter_pattern:
-        # Filter out empty patterns from "a||b" edge case
-        patterns = [p.strip() for p in filter_pattern.split("|") if p.strip()]
+        patterns = [p.strip() for p in filter_pattern.split('|') if p.strip()]
         if patterns and not any(p.lower() in iid.lower() for p in patterns):
             continue
-    instances.append(iid)
-
-total = len(instances)
-print(f"Found {total} instances to check")
-
-pulled = 0
-skipped = 0
-failed = 0
-
-for i, iid in enumerate(instances, 1):
-    # Convert to Docker-compatible name (same as mini-swe-agent)
-    docker_id = iid.replace("__", "_1776_").lower()
-    image = f"{registry}.{docker_id}:latest"
-
-    # Check if already exists
-    result = subprocess.run(
-        ["docker", "image", "inspect", image],
-        capture_output=True
-    )
-    if result.returncode == 0:
-        skipped += 1
-        continue
-
-    # Pull image
-    print(f"[PULL {i}/{total}] {docker_id}")
-    result = subprocess.run(
-        ["docker", "pull", image],
-        capture_output=True
-    )
-    if result.returncode == 0:
-        pulled += 1
-    else:
-        print(f"[FAIL {i}/{total}] {docker_id}")
-        failed += 1
-
-print(f"")
-print(f"Images: {pulled} pulled, {skipped} cached, {failed} failed")
-
-if failed > 0:
-    print(f"WARNING: {failed} images failed to pull", file=sys.stderr)
+    print(iid)
 PYTHON_SCRIPT
-then
-    echo "ERROR: Failed to pull Docker images"
+    ")
+
+if [[ -z "$INSTANCE_IDS" ]]; then
+    echo "ERROR: No instances found (or failed to load dataset)"
     exit 1
 fi
 
-# Clean up environment variables
-unset PULL_DATASET PULL_FILTER
+# Count instances
+TOTAL=$(echo "$INSTANCE_IDS" | wc -l | tr -d ' ')
+echo "Found $TOTAL instances to check"
+echo ""
+
+# Pull images
+PULLED=0
+SKIPPED=0
+FAILED=0
+CURRENT=0
+
+REGISTRY="docker.io/swebench/sweb.eval.x86_64"
+
+while IFS= read -r INSTANCE_ID; do
+    CURRENT=$((CURRENT + 1))
+
+    # Convert to Docker-compatible name (same as mini-swe-agent)
+    DOCKER_ID=$(echo "$INSTANCE_ID" | sed 's/__/_1776_/g' | tr '[:upper:]' '[:lower:]')
+    IMAGE="${REGISTRY}.${DOCKER_ID}:latest"
+
+    # Check if already exists
+    if docker image inspect "$IMAGE" &>/dev/null; then
+        SKIPPED=$((SKIPPED + 1))
+        continue
+    fi
+
+    # Pull image
+    echo "[PULL $CURRENT/$TOTAL] $DOCKER_ID"
+    if docker pull "$IMAGE" > /dev/null 2>&1; then
+        PULLED=$((PULLED + 1))
+    else
+        echo "[FAIL $CURRENT/$TOTAL] $DOCKER_ID"
+        FAILED=$((FAILED + 1))
+    fi
+done <<< "$INSTANCE_IDS"
+
+echo ""
+echo "Images: $PULLED pulled, $SKIPPED cached, $FAILED failed"
+
+if [[ $FAILED -gt 0 ]]; then
+    echo "WARNING: $FAILED images failed to pull" >&2
+fi
 
 echo ""
 echo "================================================"
