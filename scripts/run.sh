@@ -251,6 +251,24 @@ log() {
     echo "$msg" >> "$RESULTS_DIR/run.log"
 }
 
+# Pull Docker images for SWE-bench instances
+# This prevents timeout errors during patch generation
+pull_images() {
+    log "Pulling Docker images for $DATASET_NAME..."
+
+    # Build arguments for pull script
+    local PULL_ARGS=("$DATASET")
+    if [[ -n "$INSTANCE_FILTER" ]]; then
+        PULL_ARGS+=(--filter "$INSTANCE_FILTER")
+    fi
+
+    # Call the standalone pull script
+    if ! "$SCRIPT_DIR/pull_images.sh" "${PULL_ARGS[@]}"; then
+        log "ERROR: Failed to pull Docker images"
+        exit 1
+    fi
+}
+
 # Change to project directory
 cd "$PROJECT_DIR"
 
@@ -288,6 +306,7 @@ case "$COMMAND" in
         ;;
 
     generate)
+        pull_images
         log "Starting patch generation"
         $COMPOSE_CMD --profile generate up --abort-on-container-exit
         log "Patch generation completed"
@@ -301,6 +320,9 @@ case "$COMMAND" in
 
     both)
         log "Starting full pipeline"
+
+        # Pull Docker images before starting (prevents timeout errors)
+        pull_images
 
         # Check if llama-server is already running and healthy
         SERVER_WAS_RUNNING=""
