@@ -75,14 +75,9 @@ echo ""
 # This avoids requiring Python/datasets on the host
 echo "Loading dataset (via container)..."
 
-# Create a temp directory for HuggingFace cache to avoid container disk limits
-HF_CACHE_DIR=$(mktemp -d)
-trap "rm -rf $HF_CACHE_DIR" EXIT
-
+# Container uses ephemeral storage, cleaned up automatically with --rm
 INSTANCE_IDS=$(docker run --rm \
     -e HF_HUB_DISABLE_PROGRESS_BARS=1 \
-    -e HF_HOME=/hf_cache \
-    -v "$HF_CACHE_DIR:/hf_cache" \
     python:3.11-slim \
     /bin/bash -c "
         pip install -q datasets > /dev/null 2>&1
