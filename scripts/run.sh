@@ -17,6 +17,7 @@ FILTER=""
 USE_GPU=""
 USE_CPU=""
 USE_AGENT_V2=""
+USE_DOWNLOAD=""
 COMMAND="both"
 
 # Parse arguments
@@ -50,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             USE_AGENT_V2="1"
             shift
             ;;
+        --download)
+            USE_DOWNLOAD="1"
+            shift
+            ;;
         generate|evaluate|both|server|stop|logs|status)
             COMMAND="$1"
             shift
@@ -69,6 +74,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --gpu                  Use NVIDIA GPU acceleration (requires nvidia-container-toolkit)"
             echo "  --cpu                  Use extended timeouts for slow CPU inference"
             echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
+            echo "  --download             Download model from HuggingFace if not present"
             echo ""
             echo "Commands:"
             echo "  generate    Run patch generation only"
@@ -164,6 +170,28 @@ set +a
 # Apply command-line overrides
 if [[ -n "$FILTER" ]]; then
     export INSTANCE_FILTER="$FILTER"
+fi
+
+# Check if model exists, download if requested
+MODEL_PATH="$PROJECT_DIR/models/$MODEL_FILE"
+if [[ ! -f "$MODEL_PATH" ]]; then
+    if [[ -n "$USE_DOWNLOAD" ]]; then
+        echo "Model not found, downloading..."
+        if ! "$SCRIPT_DIR/download_model.sh" "$MODEL"; then
+            echo "Error: Failed to download model"
+            exit 1
+        fi
+    else
+        echo "Error: Model file not found: $MODEL_PATH"
+        if [[ -n "$MODEL_REPO" ]]; then
+            echo "Run with --download to auto-download from HuggingFace"
+            echo "Or manually: ./scripts/download_model.sh $MODEL"
+        else
+            echo "MODEL_REPO not configured for auto-download"
+            echo "Download manually from HuggingFace"
+        fi
+        exit 1
+    fi
 fi
 
 # Calculate total context size for llama-server
