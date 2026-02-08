@@ -16,6 +16,7 @@ DATASET=""
 FILTER=""
 USE_GPU=""
 USE_CPU=""
+USE_AGENT_V2=""
 COMMAND="both"
 
 # Parse arguments
@@ -45,6 +46,10 @@ while [[ $# -gt 0 ]]; do
             USE_CPU="1"
             shift
             ;;
+        --agent-v2)
+            USE_AGENT_V2="1"
+            shift
+            ;;
         generate|evaluate|both|server|stop|logs|status)
             COMMAND="$1"
             shift
@@ -63,6 +68,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --filter, -f FILTER    Instance filter (pipe-separated instance IDs)"
             echo "  --gpu                  Use NVIDIA GPU acceleration (requires nvidia-container-toolkit)"
             echo "  --cpu                  Use extended timeouts for slow CPU inference"
+            echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
             echo ""
             echo "Commands:"
             echo "  generate    Run patch generation only"
@@ -96,7 +102,7 @@ done
 case "$COMMAND" in
     stop)
         echo "Stopping all services..."
-        docker compose --profile generate --profile evaluate down
+        docker compose --profile generate --profile generate-v2 --profile evaluate down
         exit 0
         ;;
     logs)
@@ -170,8 +176,13 @@ export LLAMA_CTX_SIZE=$((CTX_SIZE * ${PARALLEL:-1}))
 # input_cost_per_token is set to a 0.0000012 to limit too many repetative requests which is expected on kv quantization
 # it limits the cumulative input token count in each instanceas 2.500.000 tokens.
 # budget is set to 3 as default, so 3 / 2.500.000 = 0.0000012
-mkdir -p "$PROJECT_DIR/config/mini-swe-agent"
-cat > "$PROJECT_DIR/config/mini-swe-agent/registry.json" << EOF
+if [[ -n "$USE_AGENT_V2" ]]; then
+    AGENT_CONFIG_DIR="$PROJECT_DIR/config/mini-swe-agent-v2"
+else
+    AGENT_CONFIG_DIR="$PROJECT_DIR/config/mini-swe-agent"
+fi
+mkdir -p "$AGENT_CONFIG_DIR"
+cat > "$AGENT_CONFIG_DIR/registry.json" << EOF
 {
   "local/${MODEL_NAME}": {
     "max_tokens": 8192,
@@ -189,6 +200,10 @@ if [[ -n "$USE_GPU" ]]; then
     COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.gpu.yml"
 elif [[ -n "$USE_CPU" ]]; then
     COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.cpu.yml"
+fi
+# Add v2 override if using agent v2
+if [[ -n "$USE_AGENT_V2" ]]; then
+    COMPOSE_CMD="$COMPOSE_CMD -f docker-compose.v2.yml"
 fi
 
 # Generate timestamp
@@ -218,6 +233,13 @@ else
     ACCEL_TYPE="cpu"
 fi
 
+# Determine agent version
+if [[ -n "$USE_AGENT_V2" ]]; then
+    AGENT_VERSION="v2"
+else
+    AGENT_VERSION="v1"
+fi
+
 # Write metadata file (standard format for all benchmarks)
 cat > "$RESULTS_DIR/metadata.json" << EOF
 {
@@ -240,6 +262,10 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
     "ctx_size": $CTX_SIZE,
     "kv_type_k": "$KV_TYPE_K",
     "kv_type_v": "$KV_TYPE_V"
+  },
+  "agent": {
+    "name": "mini-swe-agent",
+    "version": "$AGENT_VERSION"
   }
 }
 EOF
@@ -296,6 +322,9 @@ echo "RUN_ID:      $RUN_ID"
 if [[ -n "$INSTANCE_FILTER" ]]; then
     echo "Filter:      $INSTANCE_FILTER"
 fi
+if [[ -n "$USE_AGENT_V2" ]]; then
+    echo "Agent:       mini-swe-agent v2 (experimental)"
+fi
 echo "=========================================="
 echo ""
 
@@ -308,7 +337,12 @@ case "$COMMAND" in
     generate)
         pull_images
         log "Starting patch generation"
-        $COMPOSE_CMD --profile generate up --abort-on-container-exit
+        if [[ -n "$USE_AGENT_V2" ]]; then
+            log "Using mini-swe-agent v2"
+            $COMPOSE_CMD --profile generate-v2 up --abort-on-container-exit
+        else
+            $COMPOSE_CMD --profile generate up --abort-on-container-exit
+        fi
         log "Patch generation completed"
         ;;
 
@@ -365,7 +399,12 @@ case "$COMMAND" in
 
         # Generate patches (only swe-agent output)
         log "Phase 1: Patch generation"
-        $COMPOSE_CMD --profile generate up swe-agent
+        if [[ -n "$USE_AGENT_V2" ]]; then
+            log "Using mini-swe-agent v2"
+            $COMPOSE_CMD --profile generate-v2 up swe-agent-v2
+        else
+            $COMPOSE_CMD --profile generate up swe-agent
+        fi
 
         # Stop llama-server only if we started it
         if [[ -z "$SERVER_WAS_RUNNING" ]]; then

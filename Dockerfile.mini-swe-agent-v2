@@ -1,0 +1,36 @@
+# Mini SWE-agent v2 Docker Image
+# ===============================
+# For testing mini-swe-agent v2 before full integration.
+# v2 has breaking changes - this allows side-by-side testing with v1.
+#
+# Build: docker compose -f docker-compose.yml -f docker-compose.v2.yml build swe-agent-v2
+# Test:  docker compose -f docker-compose.yml -f docker-compose.v2.yml run swe-agent-v2 --help
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install mini-swe-agent v2 (pinned to v2.x)
+# Using --pre to include alpha/beta releases (v2 is currently 2.0.0a2)
+# Note: 'datasets' is now a core dependency in v2, no need to install separately
+RUN pip install --no-cache-dir --pre "mini-swe-agent>=2.0,<3.0" huggingface_hub
+
+WORKDIR /app
+
+# Create config directory (registry.json is mounted at runtime)
+RUN mkdir -p /app/config
+
+# Copy wrapper script (v2 version)
+COPY scripts/run_mini_swe_agent_v2.sh /app/run.sh
+RUN chmod +x /app/run.sh
+
+# Create results directory mount point
+RUN mkdir -p /results
+
+# Use wrapper script as entrypoint
+ENTRYPOINT ["/app/run.sh"]

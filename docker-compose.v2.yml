@@ -1,0 +1,36 @@
+# Mini SWE-agent v2 Override
+# ==========================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.v2.yml --profile generate-v2 up
+# Or via run.sh: ./scripts/run.sh --agent-v2 -m MODEL -k KV -d DATASET
+#
+# This override file adds a separate swe-agent-v2 service for testing v2
+# while keeping the original swe-agent service unchanged.
+
+services:
+  swe-agent-v2:
+    build:
+      context: .
+      dockerfile: Dockerfile.mini-swe-agent-v2
+    environment:
+      - OPENAI_API_BASE=http://llama-server:8080/v1
+      - OPENAI_API_KEY=dummy
+      - LITELLM_MODEL_REGISTRY_PATH=/app/config/registry.json
+      - MSWEA_COST_TRACKING=ignore_errors
+      # Suppress startup banner in v2
+      - MSWEA_SILENT_STARTUP=1
+      # Reduce retry attempts from default 10 to 5 (saves time on context overflow)
+      - MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=5
+      - MODEL_NAME=${MODEL_NAME:-qwen3-4b}
+      - RUN_ID=${RUN_ID:-default}
+      - SUBSET=${SUBSET:-lite}
+      - INSTANCE_FILTER=${INSTANCE_FILTER:-}
+      - WORKERS=${WORKERS:-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./results:/results
+      - ./config/mini-swe-agent-v2:/app/config:ro
+    depends_on:
+      llama-server:
+        condition: service_healthy
+    profiles:
+      - generate-v2
