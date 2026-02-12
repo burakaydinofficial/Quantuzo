@@ -223,16 +223,16 @@ cat > "$AGENT_CONFIG_DIR/registry.json" << EOF
 EOF
 
 # Build docker compose command with optional overrides
-COMPOSE_CMD="docker compose"
+COMPOSE_FILES="-f docker-compose.yml"
 if [[ -n "$USE_GPU" ]]; then
-    COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.gpu.yml"
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.gpu.yml"
 elif [[ -n "$USE_CPU" ]]; then
-    COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.cpu.yml"
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.cpu.yml"
 fi
-# Add v2 override if using agent v2
 if [[ -n "$USE_AGENT_V2" ]]; then
-    COMPOSE_CMD="$COMPOSE_CMD -f docker-compose.v2.yml"
+    COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.v2.yml"
 fi
+COMPOSE_CMD="docker compose $COMPOSE_FILES"
 
 # Generate timestamp
 TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
