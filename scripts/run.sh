@@ -427,12 +427,17 @@ case "$COMMAND" in
         fi
 
         # Generate patches (only swe-agent output)
+        # Use --no-recreate if server was already running to avoid restarting it
         log "Phase 1: Patch generation"
+        COMPOSE_UP_FLAGS=""
+        if [[ -n "$SERVER_WAS_RUNNING" ]]; then
+            COMPOSE_UP_FLAGS="--no-recreate"
+        fi
         if [[ -n "$USE_AGENT_V2" ]]; then
             log "Using mini-swe-agent v2"
-            $COMPOSE_CMD --profile generate-v2 up swe-agent-v2
+            $COMPOSE_CMD --profile generate-v2 up $COMPOSE_UP_FLAGS swe-agent-v2
         else
-            $COMPOSE_CMD --profile generate up swe-agent
+            $COMPOSE_CMD --profile generate up $COMPOSE_UP_FLAGS swe-agent
         fi
 
         # Stop llama-server only if we started it
