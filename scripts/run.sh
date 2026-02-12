@@ -261,11 +261,13 @@ else
     ACCEL_TYPE="cpu"
 fi
 
-# Determine agent version
+# Determine agent version (defaults match docker-compose.yml)
 if [[ -n "$USE_AGENT_V2" ]]; then
-    AGENT_VERSION="v2"
+    AGENT_BRANCH="v2"
+    AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION_V2:-2.0.0}"
 else
-    AGENT_VERSION="v1"
+    AGENT_BRANCH="v1"
+    AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION:-1.17.5}"
 fi
 
 # Write metadata file (standard format for all benchmarks)
@@ -293,7 +295,8 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
   },
   "agent": {
     "name": "mini-swe-agent",
-    "version": "$AGENT_VERSION"
+    "branch": "$AGENT_BRANCH",
+    "version": "$AGENT_PKG_VERSION"
   }
 }
 EOF
@@ -350,9 +353,7 @@ echo "RUN_ID:      $RUN_ID"
 if [[ -n "$INSTANCE_FILTER" ]]; then
     echo "Filter:      $INSTANCE_FILTER"
 fi
-if [[ -n "$USE_AGENT_V2" ]]; then
-    echo "Agent:       mini-swe-agent v2 (experimental)"
-fi
+echo "Agent:       mini-swe-agent $AGENT_BRANCH ($AGENT_PKG_VERSION)"
 echo "=========================================="
 echo ""
 
