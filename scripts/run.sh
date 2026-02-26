@@ -264,7 +264,7 @@ fi
 # Determine agent version (defaults match docker-compose.yml)
 if [[ -n "$USE_AGENT_V2" ]]; then
     AGENT_BRANCH="v2"
-    AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION_V2:-2.0.0}"
+    AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION_V2:-2.2.4}"
 else
     AGENT_BRANCH="v1"
     AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION:-1.17.5}"
