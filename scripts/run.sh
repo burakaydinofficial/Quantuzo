@@ -18,6 +18,7 @@ USE_GPU=""
 USE_CPU=""
 USE_AGENT_V2=""
 USE_DOWNLOAD=""
+SKIP_PULL=""
 COMMAND="both"
 
 # Parse arguments
@@ -55,6 +56,10 @@ while [[ $# -gt 0 ]]; do
             USE_DOWNLOAD="1"
             shift
             ;;
+        --no-pull)
+            SKIP_PULL="1"
+            shift
+            ;;
         generate|evaluate|both|server|stop|logs|status)
             COMMAND="$1"
             shift
@@ -75,6 +80,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --cpu                  Use extended timeouts for slow CPU inference"
             echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
             echo "  --download             Download model from HuggingFace if not present"
+            echo "  --no-pull              Skip Docker image pull (run pull separately in parallel)"
             echo ""
             echo "Commands:"
             echo "  generate    Run patch generation only"
@@ -311,6 +317,11 @@ log() {
 # Pull Docker images for SWE-bench instances
 # This prevents timeout errors during patch generation
 pull_images() {
+    if [[ -n "$SKIP_PULL" ]]; then
+        log "Skipping Docker image pull (--no-pull)"
+        return 0
+    fi
+
     log "Pulling Docker images for $DATASET_NAME..."
 
     # Build arguments for pull script
