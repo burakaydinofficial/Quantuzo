@@ -2,16 +2,9 @@
 
 A reproducible Docker Compose setup to benchmark how KV cache quantization in llama.cpp affects coding accuracy on SWE-bench tasks. This project measures the trade-off between memory savings and model quality degradation when using quantized KV caches (Q8, Q5, Q4) compared to the F16 baseline.
 
-## Key Findings
+## Results
 
-*Results pending - run benchmarks to populate this table*
-
-| KV Config | Resolved | Rate | Δ Baseline |
-|-----------|----------|------|------------|
-| K:f16/V:f16 | - | - | - |
-| K:q8/V:q8 | - | - | - |
-| K:q8/V:q4 | - | - | - |
-| K:q4/V:q4 | - | - | - |
+All benchmark results are published to the [Quantuzo dataset on HuggingFace](https://huggingface.co/datasets/burakaydinofficial/Quantuzo), including full run artifacts, per-instance trajectories, and a structured leaderboard.
 
 ## Quick Start
 
@@ -167,6 +160,14 @@ spec/
 # Run all KV configurations for a model
 ./scripts/run_all.sh --model qwen3-4b-instruct-2507
 
+# Auto-push results to HuggingFace after evaluation
+./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite --push
+
+# Push existing results manually
+python3 scripts/push_results.py --all
+python3 scripts/push_results.py --run-id RUN_ID
+python3 scripts/push_results.py --all --dry-run
+
 # Analyze results
 python scripts/analyze_results.py
 python scripts/analyze_results.py --export-csv results.csv
@@ -205,14 +206,15 @@ results/swe-lite-qwen3-4b-instruct-2507-kv-q8-q8-20240115_143052/
 }
 ```
 
-## Contributing Results
+## Publishing Results
 
-Results are tracked in this repository. Each run gets a unique timestamped folder, so multiple contributors can submit results for the same configuration without conflicts.
+Results are published to [HuggingFace](https://huggingface.co/datasets/burakaydinofficial/Quantuzo). Use `--push` to upload automatically after evaluation, or push manually:
 
-To contribute:
-1. Run your benchmark
-2. Submit a PR with your results folder
-3. Include your hardware specs in the PR description
+```bash
+# Requires HF_TOKEN with write access (set in .env or environment)
+python3 scripts/push_results.py --run-id RUN_ID
+python3 scripts/push_results.py --all
+```
 
 ## Adding New Models
 

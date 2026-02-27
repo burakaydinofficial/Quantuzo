@@ -53,19 +53,54 @@ tags:
   - kv-cache
   - quantization
   - swe-bench
-pretty_name: KV Cache Quantization Benchmark
+  - swe-agent
+  - code-generation
+pretty_name: "Quantuzo: KV Cache Quantization Benchmark"
 ---
 
-# KV Cache Quantization Benchmark
+# Quantuzo: KV Cache Quantization Benchmark
 
-Benchmark results measuring how KV cache quantization in llama.cpp affects coding accuracy on SWE-bench tasks.
+**Does KV cache quantization in llama.cpp hurt coding ability?**
 
-## Structure
+Quantuzo measures the impact of KV cache quantization levels on real-world software engineering tasks using [SWE-bench](https://www.swebench.com/). Instead of synthetic benchmarks, models must actually browse repositories, understand code, write patches, and pass test suites.
 
-- `leaderboard.jsonl` — One JSON row per evaluated run (for programmatic access)
-- `runs/{run_id}/` — Full result artifacts per run
+## Motivation
+
+KV cache quantization (q8_0, q5_0, q4_0, etc.) significantly reduces VRAM usage during inference, making it possible to run larger models or use longer contexts on limited hardware. But does this lossy compression degrade the model's ability to reason about code?
+
+This dataset provides empirical answers by running identical SWE-bench evaluations across different KV cache configurations, keeping all other variables constant.
+
+## Methodology
+
+```
+llama.cpp (KV cache quantization) -> OpenAI-compatible API -> mini-SWE-agent -> SWE-bench evaluation
+```
+
+1. **Inference**: [llama.cpp](https://github.com/ggerganov/llama.cpp) serves GGUF models with configurable KV cache quantization via `--cache-type-k` and `--cache-type-v`
+2. **Agent**: [mini-SWE-agent](https://github.com/SWE-agent/mini-swe-agent) generates patches through an agent loop (browsing files, making edits, running tests)
+3. **Evaluation**: [SWE-bench harness](https://github.com/princeton-nlp/SWE-bench) runs the generated patches against ground-truth test suites
+4. **Context**: All runs use 64K token context to ensure comparability
+
+## Dataset Structure
+
+```
+Quantuzo/
++-- README.md
++-- leaderboard.jsonl          # One JSON row per run (programmatic access)
++-- runs/
+    +-- {run_id}/
+        +-- metadata.json             # Run configuration
+        +-- preds.json                # Agent predictions (keyed by instance_id)
+        +-- swebench_predictions.json # SWE-bench harness format
+        +-- evaluation_results.json   # Full evaluation results
+        +-- {instance_id}/            # Per-instance trajectory data
+        +-- run.log                   # Full run log
+        +-- minisweagent.log          # Agent log
+```
 
 ## Leaderboard Schema
+
+Each row in `leaderboard.jsonl` contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -73,18 +108,56 @@ Benchmark results measuring how KV cache quantization in llama.cpp affects codin
 | timestamp | string | ISO 8601 UTC timestamp |
 | model_name | string | Model name |
 | model_file | string | GGUF filename |
-| kv_type_k | string | KV cache key quantization |
-| kv_type_v | string | KV cache value quantization |
+| kv_type_k | string | KV cache key type (f16, q8_0, q5_0, q4_0) |
+| kv_type_v | string | KV cache value type (f16, q8_0, q5_0, q4_0) |
 | ctx_size | int | Context size in tokens |
 | accelerator | string | cpu or gpu |
 | agent_version | string | mini-swe-agent version |
 | agent_branch | string | Agent branch (v1/v2) |
-| benchmark | string | Benchmark name |
-| total | int | Total instances |
-| resolved | int | Resolved instances |
-| failed | int | Failed instances |
-| error | int | Error instances |
+| benchmark | string | Benchmark variant (swe-bench-lite, etc.) |
+| total | int | Total instances in dataset |
+| resolved | int | Instances where patch passes tests |
+| failed | int | Instances where patch fails tests |
+| error | int | Instances with evaluation errors |
 | rate | float | Resolution rate (%) |
+
+## KV Cache Configurations
+
+| Config | KV_TYPE_K | KV_TYPE_V | Relative Memory |
+|--------|-----------|-----------|-----------------|
+| f16 | f16 | f16 | 100% (baseline) |
+| q8 | q8_0 | q8_0 | ~75% |
+| q5 | q5_0 | q5_0 | ~69% |
+| q8-q4 | q8_0 | q4_0 | ~69% |
+| q4 | q4_0 | q4_0 | ~63% |
+
+## Usage
+
+```python
+from huggingface_hub import hf_hub_download
+import json
+
+# Download leaderboard
+path = hf_hub_download(
+    repo_id="burakaydinofficial/Quantuzo",
+    filename="leaderboard.jsonl",
+    repo_type="dataset",
+)
+
+with open(path) as f:
+    runs = [json.loads(line) for line in f]
+
+for run in runs:
+    print(f"{run['model_name']} KV:{run['kv_type_k']}/{run['kv_type_v']} -> {run['resolved']}/{run['total']} ({run['rate']:.1f}%)")
+```
+
+## Source Code
+
+The full benchmarking infrastructure is open source: [github.com/burakaydinofficial/Quantuzo](https://github.com/burakaydinofficial/Quantuzo)
+
+## License
+
+MIT
 """
 
 
