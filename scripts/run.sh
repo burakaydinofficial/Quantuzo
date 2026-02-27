@@ -19,6 +19,7 @@ USE_CPU=""
 USE_AGENT_V2=""
 USE_DOWNLOAD=""
 SKIP_PULL=""
+CUSTOM_RUN_ID=""
 COMMAND="both"
 
 # Parse arguments
@@ -60,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_PULL="1"
             shift
             ;;
+        --run-id)
+            CUSTOM_RUN_ID="$2"
+            shift 2
+            ;;
         generate|evaluate|both|server|stop|logs|status)
             COMMAND="$1"
             shift
@@ -81,6 +86,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
             echo "  --download             Download model from HuggingFace if not present"
             echo "  --no-pull              Skip Docker image pull (run pull separately in parallel)"
+            echo "  --run-id ID            Use existing run ID (for evaluating interrupted runs)"
             echo ""
             echo "Commands:"
             echo "  generate    Run patch generation only"
@@ -243,12 +249,16 @@ COMPOSE_CMD="docker compose $COMPOSE_FILES"
 # Generate timestamp
 TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
 
-# Generate RUN_ID with timestamp
+# Generate RUN_ID with timestamp (or use custom --run-id)
 # Format: {dataset}-{model}-kv-{k}-{v}-{timestamp}
 # Use full KV type names to distinguish variants (q5_0 vs q5_1)
-kv_k_short="$KV_TYPE_K"
-kv_v_short="$KV_TYPE_V"
-RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
+if [[ -n "$CUSTOM_RUN_ID" ]]; then
+    RUN_ID="$CUSTOM_RUN_ID"
+else
+    kv_k_short="$KV_TYPE_K"
+    kv_v_short="$KV_TYPE_V"
+    RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
+fi
 export RUN_ID
 
 # Create results directory
@@ -276,7 +286,10 @@ else
     AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION:-1.17.5}"
 fi
 
-# Write metadata file (standard format for all benchmarks)
+# Write metadata file (skip if using existing run ID - it already has one)
+if [[ -n "$CUSTOM_RUN_ID" ]] && [[ -f "$RESULTS_DIR/metadata.json" ]]; then
+    : # keep existing metadata
+else
 cat > "$RESULTS_DIR/metadata.json" << EOF
 {
   "version": "1.0",
@@ -306,6 +319,7 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
   }
 }
 EOF
+fi
 
 # Log function
 log() {
@@ -388,7 +402,7 @@ case "$COMMAND" in
 
     evaluate)
         log "Starting evaluation"
-        $COMPOSE_CMD --profile evaluate up --abort-on-container-exit
+        $COMPOSE_CMD --profile evaluate up evaluator
         log "Evaluation completed"
         ;;
 
