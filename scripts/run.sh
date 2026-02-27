@@ -379,16 +379,16 @@ case "$COMMAND" in
         log "Starting patch generation"
         if [[ -n "$USE_AGENT_V2" ]]; then
             log "Using mini-swe-agent v2"
-            $COMPOSE_CMD --profile generate-v2 up --build --abort-on-container-exit
+            $COMPOSE_CMD --profile generate-v2 up --abort-on-container-exit
         else
-            $COMPOSE_CMD --profile generate up --build --abort-on-container-exit
+            $COMPOSE_CMD --profile generate up --abort-on-container-exit
         fi
         log "Patch generation completed"
         ;;
 
     evaluate)
         log "Starting evaluation"
-        $COMPOSE_CMD --profile evaluate up --build --abort-on-container-exit
+        $COMPOSE_CMD --profile evaluate up --abort-on-container-exit
         log "Evaluation completed"
         ;;
 
@@ -446,9 +446,9 @@ case "$COMMAND" in
         fi
         if [[ -n "$USE_AGENT_V2" ]]; then
             log "Using mini-swe-agent v2"
-            $COMPOSE_CMD --profile generate-v2 up --build $COMPOSE_UP_FLAGS swe-agent-v2
+            $COMPOSE_CMD --profile generate-v2 up $COMPOSE_UP_FLAGS swe-agent-v2
         else
-            $COMPOSE_CMD --profile generate up --build $COMPOSE_UP_FLAGS swe-agent
+            $COMPOSE_CMD --profile generate up $COMPOSE_UP_FLAGS swe-agent
         fi
 
         # Stop llama-server only if we started it
@@ -459,7 +459,7 @@ case "$COMMAND" in
 
         # Run evaluation
         log "Phase 2: Evaluation"
-        $COMPOSE_CMD --profile evaluate up --build evaluator
+        $COMPOSE_CMD --profile evaluate up evaluator
 
         log "Full pipeline completed"
         log "Results available at: $RESULTS_DIR"
