@@ -11,6 +11,7 @@ SPEC_DIR="$PROJECT_DIR/spec"
 
 MODEL=""
 DATASET="swe-lite"
+PUSH_FLAG=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -23,6 +24,10 @@ while [[ $# -gt 0 ]]; do
             DATASET="$2"
             shift 2
             ;;
+        --push)
+            PUSH_FLAG="--push"
+            shift
+            ;;
         --help|-h)
             echo "Run all KV configurations for a model"
             echo ""
@@ -31,6 +36,7 @@ while [[ $# -gt 0 ]]; do
             echo "Arguments:"
             echo "  --model, -m MODEL      Model config name (required)"
             echo "  --dataset, -d DATASET  Dataset config name (default: swe-lite)"
+            echo "  --push                 Push results to HuggingFace after each run (requires HF_TOKEN)"
             echo ""
             echo "Example:"
             echo "  $0 --model qwen3-4b"
@@ -69,7 +75,7 @@ for kv in "${KV_CONFIGS[@]}"; do
     echo "=========================================="
     echo ""
 
-    "$SCRIPT_DIR/run.sh" --model "$MODEL" --kv "$kv" --dataset "$DATASET" both
+    "$SCRIPT_DIR/run.sh" --model "$MODEL" --kv "$kv" --dataset "$DATASET" $PUSH_FLAG both
 
     echo ""
     echo "Completed: $MODEL with KV=$kv"

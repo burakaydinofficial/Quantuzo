@@ -9,6 +9,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SPEC_DIR="$PROJECT_DIR/spec"
 
+# Load .env if present (for HF_TOKEN etc.)
+if [[ -f "$PROJECT_DIR/.env" ]]; then
+    set -a
+    source "$PROJECT_DIR/.env"
+    set +a
+fi
+
 # Default values
 MODEL=""
 KV=""
@@ -19,6 +26,7 @@ USE_CPU=""
 USE_AGENT_V2=""
 USE_DOWNLOAD=""
 SKIP_PULL=""
+PUSH_RESULTS=""
 CUSTOM_RUN_ID=""
 COMMAND="both"
 
@@ -61,6 +69,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_PULL="1"
             shift
             ;;
+        --push)
+            PUSH_RESULTS="1"
+            shift
+            ;;
         --run-id)
             CUSTOM_RUN_ID="$2"
             shift 2
@@ -86,6 +98,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
             echo "  --download             Download model from HuggingFace if not present"
             echo "  --no-pull              Skip Docker image pull (run pull separately in parallel)"
+            echo "  --push                 Push results to HuggingFace after evaluation (requires HF_TOKEN)"
             echo "  --run-id ID            Use existing run ID (for evaluating interrupted runs)"
             echo ""
             echo "Commands:"
@@ -404,6 +417,12 @@ case "$COMMAND" in
         log "Starting evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
         log "Evaluation completed"
+        if [[ -n "$PUSH_RESULTS" ]]; then
+            log "Pushing results to HuggingFace..."
+            python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" || {
+                log "WARNING: Failed to push results to HuggingFace"
+            }
+        fi
         ;;
 
     both)
@@ -474,6 +493,13 @@ case "$COMMAND" in
         # Run evaluation
         log "Phase 2: Evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
+
+        if [[ -n "$PUSH_RESULTS" ]]; then
+            log "Pushing results to HuggingFace..."
+            python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" || {
+                log "WARNING: Failed to push results to HuggingFace"
+            }
+        fi
 
         log "Full pipeline completed"
         log "Results available at: $RESULTS_DIR"
