@@ -13,6 +13,8 @@ export function LeaderboardPage() {
   const [benchmark, setBenchmark] = useState('');
   const [model, setModel] = useState('');
   const [kv, setKv] = useState('');
+  const [agentBranch, setAgentBranch] = useState('');
+  const [agentVersion, setAgentVersion] = useState('');
 
   const benchmarks = useMemo(
     () => [...new Set(rows.map((r) => r.benchmark))].sort(),
@@ -26,15 +28,25 @@ export function LeaderboardPage() {
     () => [...new Set(rows.map((r) => kvLabel(r.kv_type_k, r.kv_type_v)))],
     [rows],
   );
+  const agentBranches = useMemo(
+    () => [...new Set(rows.map((r) => r.agent_branch))].sort(),
+    [rows],
+  );
+  const agentVersions = useMemo(
+    () => [...new Set(rows.map((r) => r.agent_version))].sort(),
+    [rows],
+  );
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (benchmark && r.benchmark !== benchmark) return false;
       if (model && r.model_name !== model) return false;
       if (kv && kvLabel(r.kv_type_k, r.kv_type_v) !== kv) return false;
+      if (agentBranch && r.agent_branch !== agentBranch) return false;
+      if (agentVersion && r.agent_version !== agentVersion) return false;
       return true;
     });
-  }, [rows, benchmark, model, kv]);
+  }, [rows, benchmark, model, kv, agentBranch, agentVersion]);
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorBanner message={error} />;
@@ -51,12 +63,18 @@ export function LeaderboardPage() {
         benchmarks={benchmarks}
         models={models}
         kvLabels={kvLabels}
+        agentBranches={agentBranches}
+        agentVersions={agentVersions}
         selectedBenchmark={benchmark}
         selectedModel={model}
         selectedKv={kv}
+        selectedAgentBranch={agentBranch}
+        selectedAgentVersion={agentVersion}
         onBenchmarkChange={setBenchmark}
         onModelChange={setModel}
         onKvChange={setKv}
+        onAgentBranchChange={setAgentBranch}
+        onAgentVersionChange={setAgentVersion}
       />
       <OverviewChart rows={filtered} />
       <LeaderboardTable rows={filtered} allRows={rows} />

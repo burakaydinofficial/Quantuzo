@@ -6,7 +6,7 @@ import { deltaBaseline } from '../../utils/metrics';
 import { fmtPct, fmtDelta } from '../../utils/format';
 import './LeaderboardTable.css';
 
-type SortKey = 'model_name' | 'kv' | 'resolved' | 'total' | 'rate' | 'delta';
+type SortKey = 'model_name' | 'kv' | 'agent_version' | 'resolved' | 'total' | 'rate' | 'delta';
 type SortDir = 'asc' | 'desc';
 
 interface LeaderboardTableProps {
@@ -42,6 +42,8 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
               kvLabel(b.kv_type_k, b.kv_type_v),
             )
           );
+        case 'agent_version':
+          return dir * a.agent_version.localeCompare(b.agent_version);
         case 'resolved':
           return dir * (a.resolved - b.resolved);
         case 'total':
@@ -81,6 +83,9 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
           <th className={thClass('kv')} onClick={() => handleSort('kv')}>
             KV{arrow('kv')}
           </th>
+          <th className={thClass('agent_version')} onClick={() => handleSort('agent_version')}>
+            Agent{arrow('agent_version')}
+          </th>
           <th className={thClass('resolved')} onClick={() => handleSort('resolved')}>
             Resolved{arrow('resolved')}
           </th>
@@ -114,6 +119,7 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
               <td className="leaderboard-table__kv">
                 {kvLabel(row.kv_type_k, row.kv_type_v)}
               </td>
+              <td className="leaderboard-table__agent">{row.agent_branch} {row.agent_version}</td>
               <td>{row.resolved}</td>
               <td>{row.total}</td>
               <td className="leaderboard-table__rate">{fmtPct(row.rate)}</td>
