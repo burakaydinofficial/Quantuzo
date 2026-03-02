@@ -160,8 +160,8 @@ for i in $(seq 1 "$TOTAL_NUM"); do
         echo "  Downloading..."
     fi
 
-    HTTP_CODE=$(curl -L -C - -w "%{http_code}" -o "$TEMP_FILE" "$URL" 2>&1 | tail -1)
-    CURL_EXIT=${PIPESTATUS[0]}
+    HTTP_CODE=$(curl -L -C - -w "%{http_code}" -o "$TEMP_FILE" "$URL")
+    CURL_EXIT=$?
 
     if [[ $CURL_EXIT -ne 0 ]]; then
         echo "  ERROR: Download failed (curl exit code: $CURL_EXIT)"

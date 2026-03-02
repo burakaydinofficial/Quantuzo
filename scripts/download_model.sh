@@ -148,8 +148,8 @@ if [[ -f "$TEMP_FILE" ]]; then
 else
     echo "Downloading..."
 fi
-HTTP_CODE=$(curl -L -C - -w "%{http_code}" -o "$TEMP_FILE" "$URL" 2>&1 | tail -1)
-CURL_EXIT=${PIPESTATUS[0]}
+HTTP_CODE=$(curl -L -C - -w "%{http_code}" -o "$TEMP_FILE" "$URL")
+CURL_EXIT=$?
 
 # Check curl exit code
 if [[ $CURL_EXIT -ne 0 ]]; then
