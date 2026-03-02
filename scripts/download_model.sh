@@ -84,6 +84,21 @@ set -a
 source "$MODEL_CONF"
 set +a
 
+# Delegate to custom download script if configured
+if [[ -n "${MODEL_DOWNLOAD_SCRIPT:-}" ]]; then
+    CUSTOM_SCRIPT="$SPEC_DIR/models/$MODEL_DOWNLOAD_SCRIPT"
+    if [[ ! -f "$CUSTOM_SCRIPT" ]]; then
+        echo "ERROR: Custom download script not found: $CUSTOM_SCRIPT"
+        exit 1
+    fi
+    if [[ ! -x "$CUSTOM_SCRIPT" ]]; then
+        echo "ERROR: Custom download script not executable: $CUSTOM_SCRIPT"
+        echo "Run: chmod +x $CUSTOM_SCRIPT"
+        exit 1
+    fi
+    exec "$CUSTOM_SCRIPT" --model-config "$MODEL_CONF" --models-dir "$MODELS_DIR"
+fi
+
 # Validate required fields
 if [[ -z "$MODEL_REPO" ]]; then
     echo "ERROR: MODEL_REPO not defined in $MODEL_CONF"
