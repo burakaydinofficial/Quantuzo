@@ -154,14 +154,18 @@ for i in $(seq 1 "$TOTAL_NUM"); do
     fi
 
     echo "  URL: $URL"
-    echo "  Downloading..."
+    if [[ -f "$TEMP_FILE" ]]; then
+        echo "  Resuming partial download..."
+    else
+        echo "  Downloading..."
+    fi
 
     HTTP_CODE=$(curl -L -C - -w "%{http_code}" -o "$TEMP_FILE" "$URL" 2>&1 | tail -1)
-    CURL_EXIT=$?
+    CURL_EXIT=${PIPESTATUS[0]}
 
     if [[ $CURL_EXIT -ne 0 ]]; then
         echo "  ERROR: Download failed (curl exit code: $CURL_EXIT)"
-        rm -f "$TEMP_FILE"
+        echo "  Partial file kept for resume: $TEMP_FILE"
         FAILED=1
         continue
     fi
