@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvLabel } from '../../utils/kv-config';
@@ -62,6 +62,55 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
     return copy;
   }, [rows, allRows, sortKey, sortDir]);
 
+  const [copied, setCopied] = useState(false);
+
+  const buildTableData = useCallback(() => {
+    const headers = ['Model', 'KV', 'Agent', 'Resolved', 'Total', 'Rate', 'Delta (f16)'];
+    const dataRows = sorted.map((row) => {
+      const delta = deltaBaseline(row, allRows);
+      return [
+        row.model_name,
+        kvLabel(row.kv_type_k, row.kv_type_v),
+        `${row.agent_branch} ${row.agent_version}`,
+        String(row.resolved),
+        String(row.total),
+        fmtPct(row.rate),
+        fmtDelta(delta),
+      ];
+    });
+    return { headers, dataRows };
+  }, [sorted, allRows]);
+
+  function handleCopyMarkdown() {
+    const { headers, dataRows } = buildTableData();
+    const sep = headers.map(() => '---');
+    const lines = [
+      `| ${headers.join(' | ')} |`,
+      `| ${sep.join(' | ')} |`,
+      ...dataRows.map((r) => `| ${r.join(' | ')} |`),
+    ];
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function handleExportCsv() {
+    const { headers, dataRows } = buildTableData();
+    const escape = (v: string) => (v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v);
+    const lines = [
+      headers.map(escape).join(','),
+      ...dataRows.map((r) => r.map(escape).join(',')),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'leaderboard.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function thClass(key: SortKey) {
     return sortKey === key
       ? 'leaderboard-table th--sorted'
@@ -74,7 +123,16 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
   }
 
   return (
-    <table className="leaderboard-table">
+    <div>
+      <div className="leaderboard-table__actions">
+        <button className="leaderboard-table__btn" onClick={handleCopyMarkdown}>
+          {copied ? 'Copied!' : 'Copy as Markdown'}
+        </button>
+        <button className="leaderboard-table__btn" onClick={handleExportCsv}>
+          Export CSV
+        </button>
+      </div>
+      <table className="leaderboard-table">
       <thead>
         <tr>
           <th className={thClass('model_name')} onClick={() => handleSort('model_name')}>
@@ -129,5 +187,6 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }
