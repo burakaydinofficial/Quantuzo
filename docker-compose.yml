@@ -49,8 +49,12 @@ services:
       - LITELLM_MODEL_REGISTRY_PATH=/app/config/registry.json
       - MSWEA_COST_TRACKING=ignore_errors
       # High retry count to survive llama-server restarts/model reloading.
-      # Context overflow aborts immediately (in abort_exceptions), so this
-      # only adds wait time for transient errors like ServiceUnavailable.
+      # Raising this too high may cause long waits on persistent errors,
+      # including the cases the agent goes out of context window, causing
+      # expensive retries, lowering it would cause tests to fail on
+      # llama-server restarts. Since we are limiting the input tokens with
+      # cost definitions to prevent agent looping on the edge of their context
+      # window, it is also possible that there is already enough limiters.
       - MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT=12
       - MODEL_NAME=${MODEL_NAME:-qwen3-4b}
       - RUN_ID=${RUN_ID:-default}
