@@ -15,4 +15,5 @@ export interface LeaderboardRow {
   failed: number;
   error: number;
   rate: number;
+  exit_statuses?: Record<string, number>;
 }

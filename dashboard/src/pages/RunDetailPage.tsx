@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { useEvaluationResults } from '../hooks/useEvaluationResults';
 import { RunSummaryCard } from '../components/run-detail/RunSummaryCard';
+import { ExitStatusBar } from '../components/run-detail/ExitStatusBar';
 import { ProjectBreakdownTable } from '../components/run-detail/ProjectBreakdownTable';
 import { InstanceList } from '../components/run-detail/InstanceList';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
@@ -44,6 +45,8 @@ export function RunDetailPage() {
       </div>
 
       <RunSummaryCard row={row} allRows={rows} evalResults={evalResults} />
+
+      {row.exit_statuses && <ExitStatusBar exitStatuses={row.exit_statuses} />}
 
       {projectGroups.length > 0 && (
         <>

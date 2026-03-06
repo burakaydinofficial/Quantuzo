@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { DegradationCurve } from '../components/comparison/DegradationCurve';
 import { MemoryVsAccuracyChart } from '../components/comparison/MemoryVsAccuracyChart';
+import { ExitStatusComparison } from '../components/comparison/ExitStatusComparison';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { ErrorBanner } from '../components/shared/ErrorBanner';
 import './ModelComparisonPage.css';
@@ -87,6 +88,7 @@ export function ModelComparisonPage() {
         <div className="comparison-page__charts">
           <DegradationCurve rows={filtered} selectedModels={selectedModels} />
           <MemoryVsAccuracyChart rows={filtered} selectedModels={selectedModels} />
+          <ExitStatusComparison rows={filtered} selectedModels={selectedModels} />
         </div>
       )}
     </div>
