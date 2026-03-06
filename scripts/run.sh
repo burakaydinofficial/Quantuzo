@@ -2,21 +2,18 @@
 set -e
 
 # KV Cache Quantization Benchmark Runner
-# ======================================
 # Usage: ./run.sh --model MODEL --kv KV --dataset DATASET [OPTIONS] [COMMAND]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SPEC_DIR="$PROJECT_DIR/spec"
 
-# Load .env if present (for HF_TOKEN etc.)
 if [[ -f "$PROJECT_DIR/.env" ]]; then
     set -a
     source "$PROJECT_DIR/.env"
     set +a
 fi
 
-# Default values
 MODEL=""
 KV=""
 DATASET=""
@@ -30,57 +27,21 @@ PUSH_RESULTS=""
 CUSTOM_RUN_ID=""
 COMMAND="both"
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --model|-m)
-            MODEL="$2"
-            shift 2
-            ;;
-        --kv|-k)
-            KV="$2"
-            shift 2
-            ;;
-        --dataset|-d)
-            DATASET="$2"
-            shift 2
-            ;;
-        --filter|-f)
-            FILTER="$2"
-            shift 2
-            ;;
-        --gpu)
-            USE_GPU="1"
-            shift
-            ;;
-        --cpu)
-            USE_CPU="1"
-            shift
-            ;;
-        --agent-v2)
-            USE_AGENT_V2="1"
-            shift
-            ;;
-        --download)
-            USE_DOWNLOAD="1"
-            shift
-            ;;
-        --no-pull)
-            SKIP_PULL="1"
-            shift
-            ;;
-        --push)
-            PUSH_RESULTS="1"
-            shift
-            ;;
-        --run-id)
-            CUSTOM_RUN_ID="$2"
-            shift 2
-            ;;
+        --model|-m)     MODEL="$2";         shift 2 ;;
+        --kv|-k)        KV="$2";            shift 2 ;;
+        --dataset|-d)   DATASET="$2";       shift 2 ;;
+        --filter|-f)    FILTER="$2";        shift 2 ;;
+        --gpu)          USE_GPU="1";        shift ;;
+        --cpu)          USE_CPU="1";        shift ;;
+        --agent-v2)     USE_AGENT_V2="1";   shift ;;
+        --download)     USE_DOWNLOAD="1";   shift ;;
+        --no-pull)      SKIP_PULL="1";      shift ;;
+        --push)         PUSH_RESULTS="1";   shift ;;
+        --run-id)       CUSTOM_RUN_ID="$2"; shift 2 ;;
         generate|evaluate|both|server|stop|logs|status)
-            COMMAND="$1"
-            shift
-            ;;
+            COMMAND="$1"; shift ;;
         --help|-h)
             echo "KV Cache Quantization Benchmark Runner"
             echo ""
@@ -129,7 +90,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Commands that don't require full config
+# Commands that don't require config
 case "$COMMAND" in
     stop)
         echo "Stopping all services..."
@@ -151,7 +112,8 @@ case "$COMMAND" in
         ;;
 esac
 
-# Validate required arguments
+# --- From here on, all commands require model/kv/dataset ---
+
 if [[ -z "$MODEL" ]]; then
     echo "Error: --model is required"
     echo "Available models: $(ls "$SPEC_DIR/models/" 2>/dev/null | sed 's/\.conf$//' | tr '\n' ' ')"
@@ -170,7 +132,6 @@ if [[ -z "$DATASET" ]]; then
     exit 1
 fi
 
-# Validate config files exist
 RUNTIME_CONF="$SPEC_DIR/runtime.conf"
 MODEL_CONF="$SPEC_DIR/models/${MODEL}.conf"
 KV_CONF="$SPEC_DIR/quantization/${KV}.conf"
@@ -183,7 +144,7 @@ for conf in "$RUNTIME_CONF" "$MODEL_CONF" "$KV_CONF" "$DATASET_CONF"; do
     fi
 done
 
-# Load configs in order (later configs override earlier ones)
+# Load configs in order: runtime → model → quantization → dataset
 echo "Loading configuration..."
 set -a
 source "$RUNTIME_CONF"
@@ -192,12 +153,10 @@ source "$KV_CONF"
 source "$DATASET_CONF"
 set +a
 
-# Apply command-line overrides
 if [[ -n "$FILTER" ]]; then
     export INSTANCE_FILTER="$FILTER"
 fi
 
-# Check if model exists, download if requested
 MODEL_PATH="$PROJECT_DIR/models/$MODEL_FILE"
 if [[ ! -f "$MODEL_PATH" ]]; then
     if [[ -n "$USE_DOWNLOAD" ]]; then
@@ -219,17 +178,12 @@ if [[ ! -f "$MODEL_PATH" ]]; then
     fi
 fi
 
-# Calculate total context size for llama-server
-# CTX_SIZE is per-slot, llama-server needs total (CTX_SIZE * PARALLEL)
+# CTX_SIZE is per-slot; llama-server needs total
 export LLAMA_CTX_SIZE=$((CTX_SIZE * ${PARALLEL:-1}))
 
 # Generate LiteLLM model registry for mini-SWE-agent
-# This tells LiteLLM how to talk to our local model via OpenAI-compatible API
-# max_tokens limits output per response to prevent runaway generation
-# input_cost_per_token is set to 0.0000012 to limit cumulative input tokens per instance to ~2.500.000 tokens
-# output_cost_per_token is set to 0.000012 to limit cumulative output tokens per instance to ~250.000 tokens
-# both share the same budget of 3 (cost_limit in swebench.yaml) with 1/10 weight ratio
-# this prevents runaway generation loops where the model repeatedly hits max_tokens without completing
+# Cost limits prevent runaway generation: input ~2.5M tokens, output ~250K tokens per instance
+# (both share budget of 3 via cost_limit in swebench.yaml, 1:10 weight ratio)
 if [[ -n "$USE_AGENT_V2" ]]; then
     AGENT_CONFIG_DIR="$PROJECT_DIR/config/mini-swe-agent-v2"
 else
@@ -248,7 +202,7 @@ cat > "$AGENT_CONFIG_DIR/registry.json" << EOF
 }
 EOF
 
-# Build docker compose command with optional overrides
+# Build docker compose command
 COMPOSE_FILES="-f docker-compose.yml"
 if [[ -n "$USE_GPU" ]]; then
     COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.gpu.yml"
@@ -260,11 +214,9 @@ if [[ -n "$USE_AGENT_V2" ]]; then
 fi
 COMPOSE_CMD="docker compose $COMPOSE_FILES"
 
-# Collect metadata for display
 GIT_NAME=$(git config user.name 2>/dev/null || echo "unknown")
 GIT_EMAIL=$(git config user.email 2>/dev/null || echo "unknown")
 
-# Determine agent version (defaults match docker-compose.yml)
 if [[ -n "$USE_AGENT_V2" ]]; then
     AGENT_BRANCH="v2"
     AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION_V2:-2.2.4}"
@@ -273,56 +225,45 @@ else
     AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION:-1.17.5}"
 fi
 
-# Create results directory and metadata only for commands that produce results
-setup_results_dir() {
-    # Generate timestamp
-    local TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+# --- Helper functions ---
 
-    # Generate RUN_ID with timestamp (or use custom --run-id)
-    # Format: {dataset}-{model}-kv-{k}-{v}-{timestamp}
-    # Use full KV type names to distinguish variants (q5_0 vs q5_1)
+setup_results_dir() {
     if [[ -n "$CUSTOM_RUN_ID" ]]; then
         RUN_ID="$CUSTOM_RUN_ID"
     else
-        local kv_k_short="$KV_TYPE_K"
-        local kv_v_short="$KV_TYPE_V"
-        RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
+        RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${KV_TYPE_K}-${KV_TYPE_V}-$(date -u +%Y%m%d_%H%M%S)"
     fi
     export RUN_ID
 
     RESULTS_DIR="$PROJECT_DIR/results/$RUN_ID"
     mkdir -p "$RESULTS_DIR"
 
-    local HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
-
-    # Determine acceleration type
-    local ACCEL_TYPE="cpu"
-    if [[ -n "$USE_GPU" ]]; then
-        ACCEL_TYPE="gpu"
+    # Preserve existing metadata for resumed runs
+    if [[ -n "$CUSTOM_RUN_ID" ]] && [[ -f "$RESULTS_DIR/metadata.json" ]]; then
+        return
     fi
 
-    # Write metadata file (skip if using existing run ID - it already has one)
-    if [[ -n "$CUSTOM_RUN_ID" ]] && [[ -f "$RESULTS_DIR/metadata.json" ]]; then
-        : # keep existing metadata
-    else
+    local accel="cpu"
+    [[ -n "$USE_GPU" ]] && accel="gpu"
+
 cat > "$RESULTS_DIR/metadata.json" << EOF
 {
   "version": "1.0",
-  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "run_id": "$RUN_ID",
   "benchmark": "swe-bench-${DATASET_NAME#swe-}",
   "dataset": "$DATASET",
   "contributor": {
     "name": "$GIT_NAME",
     "email": "$GIT_EMAIL",
-    "hostname": "$HOSTNAME"
+    "hostname": "$(hostname 2>/dev/null || echo unknown)"
   },
   "model": {
     "name": "$MODEL_NAME",
     "file": "$MODEL_FILE"
   },
   "inference": {
-    "accelerator": "$ACCEL_TYPE",
+    "accelerator": "$accel",
     "ctx_size": $CTX_SIZE,
     "kv_type_k": "$KV_TYPE_K",
     "kv_type_v": "$KV_TYPE_V"
@@ -334,20 +275,14 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
   }
 }
 EOF
-    fi
 }
 
-# Log function (only works after setup_results_dir)
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
     echo "$msg"
-    if [[ -n "$RESULTS_DIR" ]]; then
-        echo "$msg" >> "$RESULTS_DIR/run.log"
-    fi
+    [[ -n "$RESULTS_DIR" ]] && echo "$msg" >> "$RESULTS_DIR/run.log"
 }
 
-# Pull Docker images for SWE-bench instances
-# This prevents timeout errors during patch generation
 pull_images() {
     if [[ -n "$SKIP_PULL" ]]; then
         log "Skipping Docker image pull (--no-pull)"
@@ -356,23 +291,58 @@ pull_images() {
 
     log "Pulling Docker images for $DATASET_NAME..."
 
-    # Build arguments for pull script
     local PULL_ARGS=("$DATASET")
-    if [[ -n "$INSTANCE_FILTER" ]]; then
-        PULL_ARGS+=(--filter "$INSTANCE_FILTER")
-    fi
+    [[ -n "$INSTANCE_FILTER" ]] && PULL_ARGS+=(--filter "$INSTANCE_FILTER")
 
-    # Call the standalone pull script
     if ! "$SCRIPT_DIR/pull_images.sh" "${PULL_ARGS[@]}"; then
         log "ERROR: Failed to pull Docker images"
         exit 1
     fi
 }
 
-# Change to project directory
+wait_for_server() {
+    log "Waiting for llama-server to be ready..."
+    local attempts=0
+    local max_attempts=60  # 60 × 5s = 5 minutes
+    until $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; do
+        if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "Exited"; then
+            log "ERROR: llama-server exited unexpectedly"
+            $COMPOSE_CMD logs llama-server --tail 50
+            exit 1
+        fi
+        attempts=$((attempts + 1))
+        if [[ $attempts -ge $max_attempts ]]; then
+            log "ERROR: llama-server health check timeout"
+            $COMPOSE_CMD logs llama-server --tail 50
+            exit 1
+        fi
+        sleep 5
+    done
+    log "llama-server is ready"
+}
+
+run_generate() {
+    if [[ -n "$USE_AGENT_V2" ]]; then
+        log "Using mini-swe-agent v2"
+        $COMPOSE_CMD --profile generate-v2 up "$@"
+    else
+        $COMPOSE_CMD --profile generate up "$@"
+    fi
+}
+
+push_results() {
+    if [[ -n "$PUSH_RESULTS" ]]; then
+        log "Pushing results to HuggingFace..."
+        python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" || {
+            log "WARNING: Failed to push results to HuggingFace"
+        }
+    fi
+}
+
+# --- Print configuration ---
+
 cd "$PROJECT_DIR"
 
-# Print configuration
 echo ""
 echo "=========================================="
 echo "KV Cache Quantization Benchmark"
@@ -392,56 +362,39 @@ else
     echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
 fi
 echo "Contributor: $GIT_NAME <$GIT_EMAIL>"
-if [[ -n "$INSTANCE_FILTER" ]]; then
-    echo "Filter:      $INSTANCE_FILTER"
-fi
+[[ -n "$INSTANCE_FILTER" ]] && echo "Filter:      $INSTANCE_FILTER"
 echo "Agent:       mini-swe-agent $AGENT_BRANCH ($AGENT_PKG_VERSION)"
 echo "=========================================="
 echo ""
 
+# --- Execute command ---
+
 case "$COMMAND" in
     server)
-        echo "Starting llama-server..."
         $COMPOSE_CMD up llama-server
         ;;
 
     generate)
         setup_results_dir
-        echo "RUN_ID: $RUN_ID"
         pull_images
         log "Starting patch generation"
-        if [[ -n "$USE_AGENT_V2" ]]; then
-            log "Using mini-swe-agent v2"
-            $COMPOSE_CMD --profile generate-v2 up --abort-on-container-exit
-        else
-            $COMPOSE_CMD --profile generate up --abort-on-container-exit
-        fi
+        run_generate --abort-on-container-exit
         log "Patch generation completed"
         ;;
 
     evaluate)
         setup_results_dir
-        echo "RUN_ID: $RUN_ID"
         log "Starting evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
         log "Evaluation completed"
-        if [[ -n "$PUSH_RESULTS" ]]; then
-            log "Pushing results to HuggingFace..."
-            python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" || {
-                log "WARNING: Failed to push results to HuggingFace"
-            }
-        fi
+        push_results
         ;;
 
     both)
         setup_results_dir
-        echo "RUN_ID: $RUN_ID"
         log "Starting full pipeline"
-
-        # Pull Docker images before starting (prevents timeout errors)
         pull_images
 
-        # Check if llama-server is already running and healthy
         SERVER_WAS_RUNNING=""
         if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; then
             echo ""
@@ -452,61 +405,25 @@ case "$COMMAND" in
             echo "  ./scripts/run.sh stop"
             echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
             echo ""
-            log "Using existing llama-server (healthy) - WARNING: KV config may not match!"
+            log "Using existing llama-server - WARNING: KV config may not match!"
             SERVER_WAS_RUNNING="1"
         else
             log "Starting llama-server (detached)"
             $COMPOSE_CMD up -d llama-server
-
-            # Wait for server to be healthy (up to 5 minutes for model loading)
-            log "Waiting for llama-server to be ready..."
-            WAIT_COUNT=0
-            MAX_WAIT=60  # 60 * 5 seconds = 5 minutes
-            until $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; do
-                # Check if container exited
-                if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "Exited"; then
-                    log "ERROR: llama-server exited unexpectedly"
-                    $COMPOSE_CMD logs llama-server --tail 50
-                    exit 1
-                fi
-                WAIT_COUNT=$((WAIT_COUNT + 1))
-                if [[ $WAIT_COUNT -ge $MAX_WAIT ]]; then
-                    log "ERROR: llama-server health check timeout"
-                    $COMPOSE_CMD logs llama-server --tail 50
-                    exit 1
-                fi
-                sleep 5
-            done
-            log "llama-server is ready"
+            wait_for_server
         fi
 
-        # Generate patches
-        # Always recreate the agent container to pick up fresh env vars (model, run ID, etc.)
-        # --no-deps prevents restarting llama-server if it's already running
         log "Phase 1: Patch generation"
-        if [[ -n "$USE_AGENT_V2" ]]; then
-            log "Using mini-swe-agent v2"
-            $COMPOSE_CMD --profile generate-v2 up --force-recreate --no-deps swe-agent-v2
-        else
-            $COMPOSE_CMD --profile generate up --force-recreate --no-deps swe-agent
-        fi
+        run_generate --force-recreate --no-deps
 
-        # Stop llama-server only if we started it
         if [[ -z "$SERVER_WAS_RUNNING" ]]; then
             log "Stopping llama-server to free memory"
             $COMPOSE_CMD stop llama-server
         fi
 
-        # Run evaluation
         log "Phase 2: Evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
-
-        if [[ -n "$PUSH_RESULTS" ]]; then
-            log "Pushing results to HuggingFace..."
-            python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" || {
-                log "WARNING: Failed to push results to HuggingFace"
-            }
-        fi
+        push_results
 
         log "Full pipeline completed"
         log "Results available at: $RESULTS_DIR"
