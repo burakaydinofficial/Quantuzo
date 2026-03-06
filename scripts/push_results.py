@@ -120,6 +120,7 @@ Each row in `leaderboard.jsonl` contains:
 | failed | int | Instances where patch fails tests |
 | error | int | Instances with evaluation errors |
 | rate | float | Resolution rate (%) |
+| exit_statuses | object | Agent exit status counts (Submitted, LimitsExceeded, etc.) |
 
 ## KV Cache Configurations
 
@@ -189,7 +190,25 @@ def extract_eval_results(result_dir: Path) -> dict | None:
         return None
 
 
-def build_leaderboard_row(metadata: dict, eval_results: dict | None) -> dict:
+def extract_exit_statuses(result_dir: Path) -> dict[str, int]:
+    """Count exit statuses from trajectory files in a result directory."""
+    counts: dict[str, int] = {}
+    for traj_file in result_dir.glob("*/*.traj.json"):
+        try:
+            with open(traj_file) as f:
+                traj = json.load(f)
+            status = traj.get("info", {}).get("exit_status", "unknown")
+            counts[status] = counts.get(status, 0) + 1
+        except (json.JSONDecodeError, IOError):
+            counts["parse_error"] = counts.get("parse_error", 0) + 1
+    return counts
+
+
+def build_leaderboard_row(
+    metadata: dict,
+    eval_results: dict | None,
+    exit_statuses: dict[str, int] | None = None,
+) -> dict:
     """Build a flat leaderboard row from metadata and evaluation results."""
     model = metadata.get("model", {})
     inference = metadata.get("inference", {})
@@ -220,6 +239,9 @@ def build_leaderboard_row(metadata: dict, eval_results: dict | None) -> dict:
         row["failed"] = eval_results.get("failed", 0)
         row["error"] = eval_results.get("error", 0)
         row["rate"] = eval_results.get("resolution_rate", 0.0)
+
+    if exit_statuses:
+        row["exit_statuses"] = exit_statuses
 
     return row
 
@@ -296,6 +318,8 @@ def push_single_run(api: HfApi, repo_id: str, results_dir: Path, run_id: str, dr
 
     print(f"Pushing: {run_id}")
 
+    exit_statuses = extract_exit_statuses(run_dir)
+
     if dry_run:
         files = [f.relative_to(run_dir) for f in run_dir.rglob("*") if f.is_file()]
         # Filter out testbed
@@ -303,8 +327,10 @@ def push_single_run(api: HfApi, repo_id: str, results_dir: Path, run_id: str, dr
         print(f"  Would upload {len(files)} files to {RUNS_PREFIX}/{run_id}/")
         eval_results = extract_eval_results(run_dir)
         if eval_results:
-            row = build_leaderboard_row(metadata, eval_results)
+            row = build_leaderboard_row(metadata, eval_results, exit_statuses)
             print(f"  Would upsert leaderboard row: resolved={row['resolved']}/{row['total']} rate={row['rate']}%")
+            if exit_statuses:
+                print(f"  Exit statuses: {exit_statuses}")
         else:
             print(f"  No evaluation_results.json — leaderboard not updated")
         return True
@@ -323,10 +349,12 @@ def push_single_run(api: HfApi, repo_id: str, results_dir: Path, run_id: str, dr
     eval_results = extract_eval_results(run_dir)
     if eval_results:
         rows = download_leaderboard(api, repo_id)
-        row = build_leaderboard_row(metadata, eval_results)
+        row = build_leaderboard_row(metadata, eval_results, exit_statuses)
         rows[run_id] = row
         upload_leaderboard(api, repo_id, rows)
         print(f"  Leaderboard updated: resolved={row['resolved']}/{row['total']} rate={row['rate']}%")
+        if exit_statuses:
+            print(f"  Exit statuses: {exit_statuses}")
     else:
         print(f"  No evaluation_results.json — leaderboard not updated")
 
@@ -416,10 +444,29 @@ def rebuild_leaderboard(api: HfApi, repo_id: str, dry_run: bool = False):
         except Exception:
             pass
 
-        row = build_leaderboard_row(metadata, eval_results)
+        # Extract exit statuses from trajectory files
+        exit_statuses: dict[str, int] = {}
+        traj_files = [f for f in all_files if f.startswith(f"{RUNS_PREFIX}/{run_id}/") and f.endswith(".traj.json")]
+        for traj_path in traj_files:
+            try:
+                local_traj = hf_hub_download(
+                    repo_id=repo_id,
+                    filename=traj_path,
+                    repo_type="dataset",
+                )
+                with open(local_traj) as f:
+                    traj = json.load(f)
+                status_val = traj.get("info", {}).get("exit_status", "unknown")
+                exit_statuses[status_val] = exit_statuses.get(status_val, 0) + 1
+            except Exception:
+                exit_statuses["parse_error"] = exit_statuses.get("parse_error", 0) + 1
+
+        row = build_leaderboard_row(metadata, eval_results, exit_statuses or None)
         rows[run_id] = row
         status = f"resolved={row['resolved']}/{row['total']}" if eval_results else "no eval"
         print(f"  {run_id}: {status}")
+        if exit_statuses:
+            print(f"    exit_statuses: {exit_statuses}")
 
     if dry_run:
         print(f"\nWould write {len(rows)} rows to {LEADERBOARD_FILE}")
