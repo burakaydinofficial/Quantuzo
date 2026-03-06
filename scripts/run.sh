@@ -20,6 +20,7 @@ DATASET=""
 FILTER=""
 USE_GPU=""
 USE_CPU=""
+USE_CUDA124=""
 USE_AGENT_V2=""
 USE_DOWNLOAD=""
 SKIP_PULL=""
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
         --dataset|-d)   DATASET="$2";       shift 2 ;;
         --filter|-f)    FILTER="$2";        shift 2 ;;
         --gpu)          USE_GPU="1";        shift ;;
+        --cuda124)      USE_CUDA124="1";    shift ;;
         --cpu)          USE_CPU="1";        shift ;;
         --agent-v2)     USE_AGENT_V2="1";   shift ;;
         --download)     USE_DOWNLOAD="1";   shift ;;
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
             echo "Optional arguments:"
             echo "  --filter, -f FILTER    Instance filter (pipe-separated instance IDs)"
             echo "  --gpu                  Use NVIDIA GPU acceleration (requires nvidia-container-toolkit)"
+            echo "  --cuda124              Custom CUDA 12.4 build with flash attention for all KV quant types (implies --gpu)"
             echo "  --cpu                  Use extended timeouts for slow CPU inference"
             echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
             echo "  --download             Download model from HuggingFace if not present"
@@ -202,10 +205,18 @@ cat > "$AGENT_CONFIG_DIR/registry.json" << EOF
 }
 EOF
 
+# --cuda124 implies --gpu
+if [[ -n "$USE_CUDA124" ]]; then
+    USE_GPU="1"
+fi
+
 # Build docker compose command
 COMPOSE_FILES="-f docker-compose.yml"
 if [[ -n "$USE_GPU" ]]; then
     COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.gpu.yml"
+    if [[ -n "$USE_CUDA124" ]]; then
+        COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.gpu-cuda124.yml"
+    fi
 elif [[ -n "$USE_CPU" ]]; then
     COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.cpu.yml"
 fi
@@ -353,7 +364,9 @@ echo "Dataset:     $DATASET_NAME"
 echo "Context:     $CTX_SIZE per slot (total: $LLAMA_CTX_SIZE)"
 echo "Parallel:    ${PARALLEL:-1} slot(s)"
 echo "Workers:     ${WORKERS:-2}"
-if [[ -n "$USE_GPU" ]]; then
+if [[ -n "$USE_CUDA124" ]]; then
+    echo "Accelerator: GPU (CUDA 12.4, all-quant FA)"
+elif [[ -n "$USE_GPU" ]]; then
     echo "Accelerator: GPU (CUDA)"
 elif [[ -n "$USE_CPU" ]]; then
     echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
