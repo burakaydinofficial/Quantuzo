@@ -335,9 +335,9 @@ wait_for_server() {
 run_generate() {
     if [[ -n "$USE_AGENT_V2" ]]; then
         log "Using mini-swe-agent v2"
-        $COMPOSE_CMD --profile generate-v2 up "$@"
+        $COMPOSE_CMD --profile generate-v2 up "$@" swe-agent-v2
     else
-        $COMPOSE_CMD --profile generate up "$@"
+        $COMPOSE_CMD --profile generate up "$@" swe-agent
     fi
 }
 
