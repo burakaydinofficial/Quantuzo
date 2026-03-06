@@ -96,6 +96,8 @@ export function MemoryVsAccuracyChart({
               borderRadius: '0.375em',
               color: 'var(--color-text)',
             }}
+            labelStyle={{ color: 'var(--color-text)' }}
+            itemStyle={{ color: 'var(--color-text)' }}
             formatter={(value: number | undefined, name: string | undefined) => {
               if (name === 'Memory') return [`${value ?? 0}%`, 'Memory'];
               return [`${value ?? 0}%`, 'Rate'];

@@ -97,6 +97,8 @@ export function ExitStatusComparison({ rows, selectedModels }: ExitStatusCompari
               borderRadius: '0.375em',
               color: 'var(--color-text)',
             }}
+            labelStyle={{ color: 'var(--color-text)' }}
+            itemStyle={{ color: 'var(--color-text)' }}
             formatter={(value: number | undefined, name: string | undefined) => {
               if (!name) return [value ?? 0, ''];
               const parts = name.split('_');
