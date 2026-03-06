@@ -260,36 +260,9 @@ if [[ -n "$USE_AGENT_V2" ]]; then
 fi
 COMPOSE_CMD="docker compose $COMPOSE_FILES"
 
-# Generate timestamp
-TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
-
-# Generate RUN_ID with timestamp (or use custom --run-id)
-# Format: {dataset}-{model}-kv-{k}-{v}-{timestamp}
-# Use full KV type names to distinguish variants (q5_0 vs q5_1)
-if [[ -n "$CUSTOM_RUN_ID" ]]; then
-    RUN_ID="$CUSTOM_RUN_ID"
-else
-    kv_k_short="$KV_TYPE_K"
-    kv_v_short="$KV_TYPE_V"
-    RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
-fi
-export RUN_ID
-
-# Create results directory
-RESULTS_DIR="$PROJECT_DIR/results/$RUN_ID"
-mkdir -p "$RESULTS_DIR"
-
-# Collect metadata
+# Collect metadata for display
 GIT_NAME=$(git config user.name 2>/dev/null || echo "unknown")
 GIT_EMAIL=$(git config user.email 2>/dev/null || echo "unknown")
-HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
-
-# Determine acceleration type
-if [[ -n "$USE_GPU" ]]; then
-    ACCEL_TYPE="gpu"
-else
-    ACCEL_TYPE="cpu"
-fi
 
 # Determine agent version (defaults match docker-compose.yml)
 if [[ -n "$USE_AGENT_V2" ]]; then
@@ -300,10 +273,38 @@ else
     AGENT_PKG_VERSION="${MINI_SWE_AGENT_VERSION:-1.17.5}"
 fi
 
-# Write metadata file (skip if using existing run ID - it already has one)
-if [[ -n "$CUSTOM_RUN_ID" ]] && [[ -f "$RESULTS_DIR/metadata.json" ]]; then
-    : # keep existing metadata
-else
+# Create results directory and metadata only for commands that produce results
+setup_results_dir() {
+    # Generate timestamp
+    local TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+
+    # Generate RUN_ID with timestamp (or use custom --run-id)
+    # Format: {dataset}-{model}-kv-{k}-{v}-{timestamp}
+    # Use full KV type names to distinguish variants (q5_0 vs q5_1)
+    if [[ -n "$CUSTOM_RUN_ID" ]]; then
+        RUN_ID="$CUSTOM_RUN_ID"
+    else
+        local kv_k_short="$KV_TYPE_K"
+        local kv_v_short="$KV_TYPE_V"
+        RUN_ID="${DATASET_NAME}-${MODEL_NAME}-kv-${kv_k_short}-${kv_v_short}-${TIMESTAMP}"
+    fi
+    export RUN_ID
+
+    RESULTS_DIR="$PROJECT_DIR/results/$RUN_ID"
+    mkdir -p "$RESULTS_DIR"
+
+    local HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
+
+    # Determine acceleration type
+    local ACCEL_TYPE="cpu"
+    if [[ -n "$USE_GPU" ]]; then
+        ACCEL_TYPE="gpu"
+    fi
+
+    # Write metadata file (skip if using existing run ID - it already has one)
+    if [[ -n "$CUSTOM_RUN_ID" ]] && [[ -f "$RESULTS_DIR/metadata.json" ]]; then
+        : # keep existing metadata
+    else
 cat > "$RESULTS_DIR/metadata.json" << EOF
 {
   "version": "1.0",
@@ -333,13 +334,16 @@ cat > "$RESULTS_DIR/metadata.json" << EOF
   }
 }
 EOF
-fi
+    fi
+}
 
-# Log function
+# Log function (only works after setup_results_dir)
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
     echo "$msg"
-    echo "$msg" >> "$RESULTS_DIR/run.log"
+    if [[ -n "$RESULTS_DIR" ]]; then
+        echo "$msg" >> "$RESULTS_DIR/run.log"
+    fi
 }
 
 # Pull Docker images for SWE-bench instances
@@ -388,7 +392,6 @@ else
     echo "Threads:     $THREADS (batch: $THREADS_BATCH)"
 fi
 echo "Contributor: $GIT_NAME <$GIT_EMAIL>"
-echo "RUN_ID:      $RUN_ID"
 if [[ -n "$INSTANCE_FILTER" ]]; then
     echo "Filter:      $INSTANCE_FILTER"
 fi
@@ -398,11 +401,13 @@ echo ""
 
 case "$COMMAND" in
     server)
-        log "Starting llama-server"
+        echo "Starting llama-server..."
         $COMPOSE_CMD up llama-server
         ;;
 
     generate)
+        setup_results_dir
+        echo "RUN_ID: $RUN_ID"
         pull_images
         log "Starting patch generation"
         if [[ -n "$USE_AGENT_V2" ]]; then
@@ -415,6 +420,8 @@ case "$COMMAND" in
         ;;
 
     evaluate)
+        setup_results_dir
+        echo "RUN_ID: $RUN_ID"
         log "Starting evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
         log "Evaluation completed"
@@ -427,6 +434,8 @@ case "$COMMAND" in
         ;;
 
     both)
+        setup_results_dir
+        echo "RUN_ID: $RUN_ID"
         log "Starting full pipeline"
 
         # Pull Docker images before starting (prevents timeout errors)
