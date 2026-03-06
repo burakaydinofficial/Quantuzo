@@ -5,7 +5,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
@@ -18,11 +17,15 @@ interface ResolutionComparisonProps {
   selectedModels: string[];
 }
 
-const RESULT_COLORS: Record<string, string> = {
-  Resolved: '#22c55e',
-  Failed: '#f59e0b',
-  Error: '#ef4444',
+const MODEL_COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6'];
+
+const CATEGORY_OPACITY: Record<string, number> = {
+  Resolved: 1.0,
+  Failed: 0.5,
+  Error: 0.25,
 };
+
+const categories = ['Resolved', 'Failed', 'Error'] as const;
 
 export function ResolutionComparison({ rows, selectedModels }: ResolutionComparisonProps) {
   const { data, models } = useMemo(() => {
@@ -58,8 +61,6 @@ export function ResolutionComparison({ rows, selectedModels }: ResolutionCompari
 
   if (data.length === 0) return null;
 
-  const categories = ['Resolved', 'Failed', 'Error'] as const;
-
   return (
     <div className="resolution-comparison">
       <div className="resolution-comparison__title">
@@ -92,26 +93,44 @@ export function ResolutionComparison({ rows, selectedModels }: ResolutionCompari
               return [value ?? 0, `${model} — ${status}`];
             }}
           />
-          <Legend
-            formatter={(value: string) => {
-              const parts = value.split('_');
-              const status = parts[parts.length - 1];
-              const model = parts.slice(0, -1).join('_');
-              return `${model} — ${status}`;
-            }}
-          />
-          {models.map((model) =>
+          {models.map((model, modelIdx) =>
             categories.map((cat) => (
               <Bar
                 key={`${model}_${cat}`}
                 dataKey={`${model}_${cat}`}
                 stackId={model}
-                fill={RESULT_COLORS[cat]}
+                fill={MODEL_COLORS[modelIdx % MODEL_COLORS.length]}
+                fillOpacity={CATEGORY_OPACITY[cat]}
+                legendType="none"
               />
             )),
           )}
         </BarChart>
       </ResponsiveContainer>
+      <div className="stacked-bar-legend">
+        <div className="stacked-bar-legend__row">
+          {models.map((model, i) => (
+            <span key={model} className="stacked-bar-legend__item">
+              <span
+                className="stacked-bar-legend__swatch"
+                style={{ backgroundColor: MODEL_COLORS[i % MODEL_COLORS.length] }}
+              />
+              {model}
+            </span>
+          ))}
+        </div>
+        <div className="stacked-bar-legend__row">
+          {categories.map((cat) => (
+            <span key={cat} className="stacked-bar-legend__item">
+              <span
+                className="stacked-bar-legend__swatch"
+                style={{ backgroundColor: '#9ca3af', opacity: CATEGORY_OPACITY[cat] }}
+              />
+              {cat}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
