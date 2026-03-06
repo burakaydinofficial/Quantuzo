@@ -5,7 +5,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
@@ -103,7 +102,6 @@ export function MemoryVsAccuracyChart({
               return [`${value ?? 0}%`, 'Rate'];
             }}
           />
-          <Legend />
           {models.map((model, i) => (
             <Scatter
               key={model}
@@ -114,6 +112,17 @@ export function MemoryVsAccuracyChart({
           ))}
         </ScatterChart>
       </ResponsiveContainer>
+      <div className="memory-vs-accuracy__legend">
+        {models.map((model, i) => (
+          <span key={model} className="memory-vs-accuracy__legend-item">
+            <span
+              className="memory-vs-accuracy__legend-swatch"
+              style={{ backgroundColor: COLORS[i % COLORS.length] }}
+            />
+            {model}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
