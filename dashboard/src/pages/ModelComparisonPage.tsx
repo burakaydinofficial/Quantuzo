@@ -3,6 +3,7 @@ import { useLeaderboard } from '../hooks/useLeaderboard';
 import { DegradationCurve } from '../components/comparison/DegradationCurve';
 import { MemoryVsAccuracyChart } from '../components/comparison/MemoryVsAccuracyChart';
 import { ExitStatusComparison } from '../components/comparison/ExitStatusComparison';
+import { ResolutionComparison } from '../components/comparison/ResolutionComparison';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { ErrorBanner } from '../components/shared/ErrorBanner';
 import './ModelComparisonPage.css';
@@ -88,7 +89,10 @@ export function ModelComparisonPage() {
         <div className="comparison-page__charts">
           <DegradationCurve rows={filtered} selectedModels={selectedModels} />
           <MemoryVsAccuracyChart rows={filtered} selectedModels={selectedModels} />
-          <ExitStatusComparison rows={filtered} selectedModels={selectedModels} />
+          <div className="comparison-page__chart-row">
+            <ResolutionComparison rows={filtered} selectedModels={selectedModels} />
+            <ExitStatusComparison rows={filtered} selectedModels={selectedModels} />
+          </div>
         </div>
       )}
     </div>
