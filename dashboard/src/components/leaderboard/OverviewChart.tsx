@@ -13,7 +13,7 @@ import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvLabel, kvSortOrder } from '../../utils/kv-config';
 import './OverviewChart.css';
 
-const COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#ef4444', '#10b981'];
+const COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#a78bfa', '#ef4444', '#10b981'];
 
 interface OverviewChartProps {
   rows: LeaderboardRow[];
@@ -70,7 +70,16 @@ export function OverviewChart({ rows }: OverviewChartProps) {
             }}
             formatter={(value: number | undefined) => [`${value ?? 0}%`, undefined]}
           />
-          <Legend />
+          <Legend content={() => (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1em', flexWrap: 'wrap', fontSize: 12 }}>
+              {kvLabels.map((kv, i) => (
+                <span key={kv} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3em', color: 'var(--color-text-secondary)' }}>
+                  <span style={{ width: 10, height: 10, background: COLORS[i % COLORS.length], display: 'inline-block' }} />
+                  {kv}
+                </span>
+              ))}
+            </div>
+          )} />
           {kvLabels.map((kv, i) => (
             <Bar
               key={kv}
