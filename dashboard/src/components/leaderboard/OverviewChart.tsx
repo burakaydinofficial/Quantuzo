@@ -68,7 +68,7 @@ export function OverviewChart({ rows }: OverviewChartProps) {
               borderRadius: '0.375em',
               color: 'var(--color-text)',
             }}
-            formatter={(value: number | undefined) => [`${value ?? 0}%`, undefined]}
+            formatter={(value: number | undefined, name: string | undefined) => [`${value ?? 0}%`, name]}
           />
           <Legend content={() => (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1em', flexWrap: 'wrap', fontSize: 12 }}>

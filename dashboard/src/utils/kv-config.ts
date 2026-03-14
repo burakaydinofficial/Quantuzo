@@ -11,6 +11,7 @@ const KV_CONFIGS: KvConfig[] = [
   { label: 'q5', k: 'q5_0', v: 'q5_0', memoryPct: 69 },
   { label: 'q5_1', k: 'q5_1', v: 'q5_1', memoryPct: 69 },
   { label: 'q8/q4', k: 'q8_0', v: 'q4_0', memoryPct: 69 },
+  { label: 'q4_1', k: 'q4_1', v: 'q4_1', memoryPct: 65 },
   { label: 'q4', k: 'q4_0', v: 'q4_0', memoryPct: 63 },
 ];
 
