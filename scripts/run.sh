@@ -363,7 +363,7 @@ echo "KV Cache:    K:$KV_TYPE_K / V:$KV_TYPE_V"
 echo "Dataset:     $DATASET_NAME"
 echo "Context:     $CTX_SIZE per slot (total: $LLAMA_CTX_SIZE)"
 echo "Parallel:    ${PARALLEL:-1} slot(s)"
-echo "Workers:     ${WORKERS:-2}"
+echo "Workers:     ${WORKERS:-1}"
 if [[ -n "$USE_CUDA124" ]]; then
     echo "Accelerator: GPU (CUDA 12.4, all-quant FA)"
 elif [[ -n "$USE_GPU" ]]; then
