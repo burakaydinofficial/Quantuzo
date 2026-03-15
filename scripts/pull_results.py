@@ -51,7 +51,7 @@ def pull_run(api, repo_id, run_id, results_dir):
         cache_dir = snapshot_download(
             repo_id=repo_id,
             repo_type="dataset",
-            allow_patterns=f"{RUNS_PREFIX}/{run_id}/*",
+            allow_patterns=f"{RUNS_PREFIX}/{run_id}/**",
         )
         # snapshot_download puts files under cache_dir/runs/{run_id}/
         src = Path(cache_dir) / RUNS_PREFIX / run_id

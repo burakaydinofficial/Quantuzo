@@ -191,6 +191,7 @@ spec/
 python3 scripts/push_results.py --all
 python3 scripts/push_results.py --run-id RUN_ID
 python3 scripts/push_results.py --all --dry-run
+python3 scripts/push_results.py --rebuild-leaderboard  # Rebuild from HF data
 
 # Pull results from HuggingFace
 python3 scripts/pull_results.py --list             # List available runs
@@ -200,6 +201,7 @@ python3 scripts/pull_results.py --all              # Pull all runs
 # Analyze results
 python3 scripts/analyze_results.py
 python3 scripts/analyze_results.py --export-csv results.csv
+python3 scripts/analyze_results.py --export-json results.json
 python3 scripts/analyze_results.py --export-chart results.svg
 
 # Show help
@@ -243,12 +245,15 @@ Results are published to [HuggingFace](https://huggingface.co/datasets/burakaydi
 # Requires HF_TOKEN with write access (set in .env or environment)
 python3 scripts/push_results.py --run-id RUN_ID
 python3 scripts/push_results.py --all
+python3 scripts/push_results.py --rebuild-leaderboard  # Rebuild leaderboard from HF data
 
 # Pull results from HuggingFace
 python3 scripts/pull_results.py --list             # List available runs
 python3 scripts/pull_results.py --run-id RUN_ID    # Pull single run
 python3 scripts/pull_results.py --all              # Pull all runs
 ```
+
+Both scripts support `--repo REPO` (or `HF_REPO` env var) to target a different HuggingFace repository.
 
 ## Adding New Models
 
