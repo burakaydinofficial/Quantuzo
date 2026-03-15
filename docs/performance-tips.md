@@ -27,9 +27,10 @@ Some models generate tokens fast at the start of a conversation but slow down si
 Model configs in `spec/models/` can override runtime defaults. For example, a large model that can only sustain 1 slot:
 
 ```
-# spec/models/qwen3-32b.conf
-MODEL_FILE=qwen3-32b-q4_k_m.gguf
-MODEL_NAME=qwen3-32b
+# spec/models/qwen3.5-27b-q4.conf
+MODEL_REPO=unsloth/Qwen3.5-27B-GGUF
+MODEL_FILE=Qwen3.5-27B-Q4_K_M.gguf
+MODEL_NAME=qwen3.5-27b-q4
 PARALLEL=1
 WORKERS=1
 ```
@@ -37,9 +38,10 @@ WORKERS=1
 While a small model on a large GPU might handle more:
 
 ```
-# spec/models/qwen3-4b.conf
-MODEL_FILE=qwen3-4b-q4_k_m.gguf
-MODEL_NAME=qwen3-4b
+# spec/models/qwen3.5-4b-q4.conf
+MODEL_REPO=unsloth/Qwen3.5-4B-GGUF
+MODEL_FILE=Qwen3.5-4B-Q4_K_M.gguf
+MODEL_NAME=qwen3.5-4b-q4
 PARALLEL=4
 WORKERS=4
 ```

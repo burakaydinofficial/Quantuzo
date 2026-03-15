@@ -12,13 +12,13 @@ All benchmark results are published to the [Quantuzo dataset on HuggingFace](htt
 
 ```bash
 # 1. Download a model
-./scripts/download_model.sh qwen3-4b-instruct-2507-q4
+./scripts/download_model.sh qwen3.5-4b-q4
 
 # 2. Build images
 docker compose build
 
 # 3. Run benchmark
-./scripts/run.sh --model qwen3-4b-instruct-2507-q4 --kv f16 --dataset swe-lite
+./scripts/run.sh --gpu --model qwen3.5-4b-q4 --kv f16 --dataset swe-lite
 ```
 
 ## How It Works
@@ -92,8 +92,8 @@ sudo systemctl restart docker
 Add the `--gpu` flag to any run command:
 
 ```bash
-./scripts/run.sh --gpu --model qwen3-4b-instruct-2507 --kv q8 --dataset swe-lite
-./scripts/run.sh --gpu -m qwen3-4b-instruct-2507 -k f16 -d swe-lite server
+./scripts/run.sh --gpu --model qwen3.5-4b-q4 --kv q8 --dataset swe-lite
+./scripts/run.sh --gpu -m qwen3.5-4b-q4 -k f16 -d swe-lite server
 ```
 
 GPU mode:
@@ -107,7 +107,7 @@ GPU mode:
 The official CUDA image only supports flash attention for f16, q8_0, and q4_0 KV types. For q4_1, q5_0, q5_1, and q8-q4 (asymmetric), use the `--cuda124` flag which builds a custom image with `GGML_CUDA_FA_ALL_QUANTS=ON`:
 
 ```bash
-./scripts/run.sh --cuda124 --model qwen3-4b-instruct-2507-q4 --kv q5 --dataset swe-lite
+./scripts/run.sh --cuda124 --model qwen3.5-4b-q4 --kv q5 --dataset swe-lite
 ```
 
 Without this flag, unsupported KV types silently fall back to non-flash attention.
@@ -149,22 +149,22 @@ spec/
 
 ```bash
 # Full pipeline
-./scripts/run.sh --model qwen3-4b-instruct-2507 --kv q8 --dataset swe-lite
+./scripts/run.sh --model qwen3.5-4b-q4 --kv q8 --dataset swe-lite
 
 # Short flags
-./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite
+./scripts/run.sh -m qwen3.5-4b-q4 -k q8 -d swe-lite
 
 # Generate patches only
-./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite generate
+./scripts/run.sh -m qwen3.5-4b-q4 -k q8 -d swe-lite generate
 
 # Evaluate existing patches
-./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite evaluate
+./scripts/run.sh -m qwen3.5-4b-q4 -k q8 -d swe-lite evaluate
 
 # Quick validation with instance filter
-./scripts/run.sh -m qwen3-4b-instruct-2507 -k f16 -d swe-lite --filter "django__django-11099|django__django-11179"
+./scripts/run.sh -m qwen3.5-4b-q4 -k f16 -d swe-lite --filter "django__django-11099|django__django-11179"
 
 # Start llama-server for testing
-./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite server
+./scripts/run.sh -m qwen3.5-4b-q4 -k q8 -d swe-lite server
 
 # Utility commands (no config required)
 ./scripts/run.sh stop      # Stop all services
@@ -172,17 +172,17 @@ spec/
 ./scripts/run.sh status    # Show containers + memory
 
 # Run all KV configurations for a model
-./scripts/run_all.sh --model qwen3-4b-instruct-2507
+./scripts/run_all.sh --gpu --model qwen3.5-4b-q4
 
 # Resume an interrupted run (skips completed instances)
-./scripts/run.sh -m qwen3-4b-instruct-2507-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID generate
-./scripts/run.sh -m qwen3-4b-instruct-2507-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID evaluate
+./scripts/run.sh --gpu -m qwen3.5-4b-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID generate
+./scripts/run.sh --gpu -m qwen3.5-4b-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID evaluate
 
 # Auto-push results to HuggingFace after evaluation
-./scripts/run.sh -m qwen3-4b-instruct-2507-q4 -k q8 -d swe-lite --push
+./scripts/run.sh --gpu -m qwen3.5-4b-q4 -k q8 -d swe-lite --push
 
 # Download a model (with validation and resume support)
-./scripts/download_model.sh qwen3-4b-instruct-2507-q4
+./scripts/download_model.sh qwen3.5-4b-q4
 
 # Pre-pull SWE-bench Docker images (prevents timeouts during runs)
 ./scripts/pull_images.sh princeton-nlp/SWE-bench_Lite
@@ -254,20 +254,21 @@ python3 scripts/pull_results.py --all              # Pull all runs
 
 1. Create a model config:
    ```bash
-   cat > spec/models/qwen3-14b.conf << 'EOF'
-   MODEL_FILE=qwen3-14b-instruct-q4_k_m.gguf
-   MODEL_NAME=qwen3-14b
+   cat > spec/models/my-model-q4.conf << 'EOF'
+   MODEL_REPO=unsloth/My-Model-GGUF
+   MODEL_FILE=My-Model-Q4_K_M.gguf
+   MODEL_NAME=my-model-q4
    EOF
    ```
 
 2. Download the model:
    ```bash
-   ./scripts/download_model.sh qwen3-14b
+   ./scripts/download_model.sh my-model-q4
    ```
 
 3. Run benchmarks:
    ```bash
-   ./scripts/run_all.sh --model qwen3-14b
+   ./scripts/run_all.sh --gpu --model my-model-q4
    ```
 
 The LiteLLM model registry is generated automatically at runtime by `run.sh`.
