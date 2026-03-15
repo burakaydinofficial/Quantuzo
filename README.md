@@ -8,16 +8,17 @@ All benchmark results are published to the [Quantuzo dataset on HuggingFace](htt
 
 ## Quick Start
 
+> **Want to contribute benchmark results?** See the full [Contributing Benchmarks](docs/contributing-benchmarks.md) guide.
+
 ```bash
-# 1. Download a model to ./models/
-mkdir -p models
-# Download from https://huggingface.co/Qwen/Qwen3-4B-Instruct-GGUF
+# 1. Download a model
+./scripts/download_model.sh qwen3-4b-instruct-2507-q4
 
 # 2. Build images
 docker compose build
 
 # 3. Run benchmark
-./scripts/run.sh --model qwen3-4b-instruct-2507 --kv f16 --dataset swe-lite
+./scripts/run.sh --model qwen3-4b-instruct-2507-q4 --kv f16 --dataset swe-lite
 ```
 
 ## How It Works
@@ -101,6 +102,16 @@ GPU mode:
 - Enables flash attention for better performance
 - Ignores CPU thread settings (irrelevant for GPU inference)
 
+### All-Quant Flash Attention (CUDA 12.4)
+
+The official CUDA image only supports flash attention for f16, q8_0, and q4_0 KV types. For q4_1, q5_0, q5_1, and q8-q4 (asymmetric), use the `--cuda124` flag which builds a custom image with `GGML_CUDA_FA_ALL_QUANTS=ON`:
+
+```bash
+./scripts/run.sh --cuda124 --model qwen3-4b-instruct-2507-q4 --kv q5 --dataset swe-lite
+```
+
+Without this flag, unsupported KV types silently fall back to non-flash attention.
+
 ### VRAM Requirements (64K context)
 
 | Model | Weights (Q4) | F16 KV | Q8 KV | Q4 KV | Minimum VRAM |
@@ -122,11 +133,14 @@ spec/
 │   ├── f16.conf              # KV_TYPE_K, KV_TYPE_V
 │   ├── q8.conf
 │   ├── q5.conf
+│   ├── q5_1.conf
 │   ├── q8-q4.conf
-│   └── q4.conf
+│   ├── q4.conf
+│   └── q4_1.conf
 └── datasets/
     ├── swe-lite.conf         # DATASET, DATASET_NAME, SUBSET
-    └── swe-full.conf
+    ├── swe-full.conf
+    └── swe-verified.conf
 ```
 
 **Config merge order:** runtime → model (can override) → quantization → dataset
@@ -160,18 +174,33 @@ spec/
 # Run all KV configurations for a model
 ./scripts/run_all.sh --model qwen3-4b-instruct-2507
 
-# Auto-push results to HuggingFace after evaluation
-./scripts/run.sh -m qwen3-4b-instruct-2507 -k q8 -d swe-lite --push
+# Resume an interrupted run (skips completed instances)
+./scripts/run.sh -m qwen3-4b-instruct-2507-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID generate
+./scripts/run.sh -m qwen3-4b-instruct-2507-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID evaluate
 
-# Push existing results manually
+# Auto-push results to HuggingFace after evaluation
+./scripts/run.sh -m qwen3-4b-instruct-2507-q4 -k q8 -d swe-lite --push
+
+# Download a model (with validation and resume support)
+./scripts/download_model.sh qwen3-4b-instruct-2507-q4
+
+# Pre-pull SWE-bench Docker images (prevents timeouts during runs)
+./scripts/pull_images.sh princeton-nlp/SWE-bench_Lite
+
+# Push results to HuggingFace
 python3 scripts/push_results.py --all
 python3 scripts/push_results.py --run-id RUN_ID
 python3 scripts/push_results.py --all --dry-run
 
+# Pull results from HuggingFace
+python3 scripts/pull_results.py --list             # List available runs
+python3 scripts/pull_results.py --run-id RUN_ID    # Pull single run
+python3 scripts/pull_results.py --all              # Pull all runs
+
 # Analyze results
-python scripts/analyze_results.py
-python scripts/analyze_results.py --export-csv results.csv
-python scripts/analyze_results.py --export-chart results.svg
+python3 scripts/analyze_results.py
+python3 scripts/analyze_results.py --export-csv results.csv
+python3 scripts/analyze_results.py --export-chart results.svg
 
 # Show help
 ./scripts/run.sh --help
@@ -206,30 +235,34 @@ results/swe-lite-qwen3-4b-instruct-2507-kv-q8-q8-20240115_143052/
 }
 ```
 
-## Publishing Results
+## Publishing and Pulling Results
 
-Results are published to [HuggingFace](https://huggingface.co/datasets/burakaydinofficial/Quantuzo). Use `--push` to upload automatically after evaluation, or push manually:
+Results are published to [HuggingFace](https://huggingface.co/datasets/burakaydinofficial/Quantuzo). Use `--push` to upload automatically after evaluation, or push/pull manually:
 
 ```bash
 # Requires HF_TOKEN with write access (set in .env or environment)
 python3 scripts/push_results.py --run-id RUN_ID
 python3 scripts/push_results.py --all
+
+# Pull results from HuggingFace
+python3 scripts/pull_results.py --list             # List available runs
+python3 scripts/pull_results.py --run-id RUN_ID    # Pull single run
+python3 scripts/pull_results.py --all              # Pull all runs
 ```
 
 ## Adding New Models
 
-1. Download the GGUF model to `./models/`:
-   ```bash
-   huggingface-cli download Qwen/Qwen3-14B-Instruct-GGUF \
-     qwen3-14b-instruct-q4_k_m.gguf --local-dir ./models/
-   ```
-
-2. Create a model config:
+1. Create a model config:
    ```bash
    cat > spec/models/qwen3-14b.conf << 'EOF'
    MODEL_FILE=qwen3-14b-instruct-q4_k_m.gguf
    MODEL_NAME=qwen3-14b
    EOF
+   ```
+
+2. Download the model:
+   ```bash
+   ./scripts/download_model.sh qwen3-14b
    ```
 
 3. Run benchmarks:
@@ -252,6 +285,10 @@ The difference in resolution rate compared to the F16 baseline. Negative values 
 - Q8/Q4 asymmetric often performs better than Q4/Q4 symmetric
 - Q4 may show 2-5% degradation depending on the model
 
+## Performance Tips
+
+See [docs/performance-tips.md](docs/performance-tips.md) for GPU parallelism tuning, pre-pulling SWE-bench images, and other optimization tips.
+
 ## Architecture
 
 ```
@@ -264,6 +301,15 @@ Host
     │   └── Mounts docker.sock for sandboxed execution
     └── evaluator (SWE-bench harness)
         └── Mounts docker.sock to spawn test containers
+```
+
+## Dashboard
+
+An interactive dashboard for exploring benchmark results is available at [HuggingFace Spaces](https://huggingface.co/spaces/burakaydinofficial/Quantuzo). It includes a leaderboard, per-run drill-down with agent trajectories and patch diffs, and model comparison charts (degradation curves, memory vs. accuracy).
+
+For local development:
+```bash
+cd dashboard && npm run dev
 ```
 
 ## License
