@@ -7,7 +7,7 @@ set -e
 # Build command
 CMD="mini-extra swebench"
 CMD="$CMD --config /app/config/swebench.yaml"
-CMD="$CMD --model local/${MODEL_NAME:-qwen3-4b}"
+CMD="$CMD --model local/${MODEL_NAME:-qwen3.5-4b-q4}"
 CMD="$CMD --subset ${SUBSET:-lite}"
 CMD="$CMD --split test"
 CMD="$CMD --output /results/${RUN_ID:-default}"

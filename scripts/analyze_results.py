@@ -335,7 +335,7 @@ def main():
 
     if not grouped_results:
         print(f"No results found in: {args.results_dir}")
-        print("Run benchmarks first with: ./scripts/run.sh -m qwen3-4b -k f16 -d swe-lite")
+        print("Run benchmarks first with: ./scripts/run.sh -m qwen3.5-4b-q4 -k f16 -d swe-lite")
         sys.exit(0)  # Exit cleanly, not an error
 
     # Print summary
