@@ -69,6 +69,7 @@ export function OverviewChart({ rows }: OverviewChartProps) {
               color: 'var(--color-text)',
             }}
             formatter={(value: number | undefined, name: string | undefined) => [`${value ?? 0}%`, name]}
+            itemSorter={(item) => kvLabels.indexOf(item.dataKey as string)}
           />
           <Legend content={() => (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '1em', flexWrap: 'wrap', fontSize: 12 }}>
