@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvLabel } from '../../utils/kv-config';
 import { deltaBaseline } from '../../utils/metrics';
-import { fmtPct, fmtDelta } from '../../utils/format';
+import { fmtPct, fmtDelta, modelDisplayName } from '../../utils/format';
 import './LeaderboardTable.css';
 
 type SortKey = 'model_name' | 'kv' | 'agent_version' | 'resolved' | 'total' | 'rate' | 'delta';
@@ -69,7 +69,7 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
     const dataRows = sorted.map((row) => {
       const delta = deltaBaseline(row, allRows);
       return [
-        row.model_name,
+        modelDisplayName(row.model_name),
         kvLabel(row.kv_type_k, row.kv_type_v),
         `${row.agent_branch} ${row.agent_version}`,
         String(row.resolved),
@@ -173,7 +173,7 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
               key={row.run_id}
               onClick={() => navigate(`/run/${encodeURIComponent(row.run_id)}`)}
             >
-              <td className="leaderboard-table__model">{row.model_name}</td>
+              <td className="leaderboard-table__model">{modelDisplayName(row.model_name)}</td>
               <td className="leaderboard-table__kv">
                 {kvLabel(row.kv_type_k, row.kv_type_v)}
               </td>

@@ -2,7 +2,7 @@ import type { LeaderboardRow } from '../../types/leaderboard';
 import type { EvaluationResults } from '../../types/evaluation';
 import { MetricCard } from '../shared/MetricCard';
 import { kvLabel } from '../../utils/kv-config';
-import { fmtPct, fmtDelta } from '../../utils/format';
+import { fmtPct, fmtDelta, modelDisplayName } from '../../utils/format';
 import { deltaBaseline, patchGenerationRate, successWhenAttempted } from '../../utils/metrics';
 import './RunSummaryCard.css';
 
@@ -23,7 +23,8 @@ export function RunSummaryCard({ row, allRows, evalResults }: RunSummaryCardProp
 
   return (
     <div className="run-summary">
-      <MetricCard label="Model" value={row.model_name} />
+      <MetricCard label="Model" value={modelDisplayName(row.model_name)} />
+      <MetricCard label="Model File" value={row.model_file} />
       <MetricCard
         label="KV Config"
         value={kvLabel(row.kv_type_k, row.kv_type_v)}

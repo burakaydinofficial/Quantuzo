@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvLabel, kvSortOrder } from '../../utils/kv-config';
+import { modelDisplayName } from '../../utils/format';
 import './ResolutionComparison.css';
 
 interface ResolutionComparisonProps {
@@ -90,7 +91,7 @@ export function ResolutionComparison({ rows, selectedModels }: ResolutionCompari
               const parts = name.split('_');
               const status = parts[parts.length - 1];
               const model = parts.slice(0, -1).join('_');
-              return [value ?? 0, `${model} — ${status}`];
+              return [value ?? 0, `${modelDisplayName(model)} — ${status}`];
             }}
           />
           {models.map((model, modelIdx) =>
@@ -115,7 +116,7 @@ export function ResolutionComparison({ rows, selectedModels }: ResolutionCompari
                 className="stacked-bar-legend__swatch"
                 style={{ backgroundColor: MODEL_COLORS[i % MODEL_COLORS.length] }}
               />
-              {model}
+              {modelDisplayName(model)}
             </span>
           ))}
         </div>

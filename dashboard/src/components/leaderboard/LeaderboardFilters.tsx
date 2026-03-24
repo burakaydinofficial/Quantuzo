@@ -1,3 +1,4 @@
+import { modelDisplayName } from '../../utils/format';
 import './LeaderboardFilters.css';
 
 interface LeaderboardFiltersProps {
@@ -62,7 +63,7 @@ export function LeaderboardFilters({
           <option value="">All</option>
           {models.map((m) => (
             <option key={m} value={m}>
-              {m}
+              {modelDisplayName(m)}
             </option>
           ))}
         </select>

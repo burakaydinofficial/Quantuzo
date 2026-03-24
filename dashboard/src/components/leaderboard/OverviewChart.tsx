@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvLabel, kvSortOrder } from '../../utils/kv-config';
+import { modelDisplayName } from '../../utils/format';
 import './OverviewChart.css';
 
 const COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#a78bfa', '#ef4444', '#10b981'];
@@ -86,7 +87,7 @@ export function OverviewChart({ rows }: OverviewChartProps) {
         ratesByKv.set(label, arr);
       }
 
-      const entry: Record<string, string | number | [number, number]> = { model };
+      const entry: Record<string, string | number | [number, number]> = { model: modelDisplayName(model) };
       for (const [label, rates] of ratesByKv) {
         const med = Number(median(rates).toFixed(1));
         const min = Number(Math.min(...rates).toFixed(1));

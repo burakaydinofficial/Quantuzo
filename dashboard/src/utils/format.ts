@@ -1,3 +1,11 @@
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  'nemotron-3-nano-q4': 'nemotron-3-nano-30b-a3b-q4',
+};
+
+export function modelDisplayName(name: string): string {
+  return MODEL_DISPLAY_NAMES[name] ?? name;
+}
+
 export function fmtPct(value: number, decimals = 1): string {
   return `${value.toFixed(decimals)}%`;
 }

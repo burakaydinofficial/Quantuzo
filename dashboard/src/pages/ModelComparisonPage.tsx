@@ -4,6 +4,7 @@ import { DegradationCurve } from '../components/comparison/DegradationCurve';
 import { MemoryVsAccuracyChart } from '../components/comparison/MemoryVsAccuracyChart';
 import { ExitStatusComparison } from '../components/comparison/ExitStatusComparison';
 import { ResolutionComparison } from '../components/comparison/ResolutionComparison';
+import { modelDisplayName } from '../utils/format';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { ErrorBanner } from '../components/shared/ErrorBanner';
 import './ModelComparisonPage.css';
@@ -75,7 +76,7 @@ export function ModelComparisonPage() {
               }
               onClick={() => toggleModel(m)}
             >
-              {m}
+              {modelDisplayName(m)}
             </button>
           ))}
         </div>

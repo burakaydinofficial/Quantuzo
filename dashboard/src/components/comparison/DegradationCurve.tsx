@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvLabel, kvSortOrder } from '../../utils/kv-config';
+import { modelDisplayName } from '../../utils/format';
 import './DegradationCurve.css';
 
 const COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6'];
@@ -79,6 +80,7 @@ export function DegradationCurve({ rows, selectedModels }: DegradationCurveProps
               key={model}
               type="monotone"
               dataKey={model}
+              name={modelDisplayName(model)}
               stroke={COLORS[i % COLORS.length]}
               strokeWidth={2}
               dot={{ r: 4 }}

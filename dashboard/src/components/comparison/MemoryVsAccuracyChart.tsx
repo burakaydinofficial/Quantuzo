@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import type { LeaderboardRow } from '../../types/leaderboard';
 import { kvMemoryPct, kvLabel } from '../../utils/kv-config';
+import { modelDisplayName } from '../../utils/format';
 import './MemoryVsAccuracyChart.css';
 
 const COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6'];
@@ -105,7 +106,7 @@ export function MemoryVsAccuracyChart({
           {models.map((model, i) => (
             <Scatter
               key={model}
-              name={model}
+              name={modelDisplayName(model)}
               data={scatterData.get(model)}
               fill={COLORS[i % COLORS.length]}
             />
@@ -119,7 +120,7 @@ export function MemoryVsAccuracyChart({
               className="memory-vs-accuracy__legend-swatch"
               style={{ backgroundColor: COLORS[i % COLORS.length] }}
             />
-            {model}
+            {modelDisplayName(model)}
           </span>
         ))}
       </div>
