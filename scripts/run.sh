@@ -21,7 +21,7 @@ FILTER=""
 USE_GPU=""
 USE_CPU=""
 USE_CUDA124=""
-USE_AGENT_V2=""
+USE_AGENT_V2="1"
 USE_DOWNLOAD=""
 SKIP_PULL=""
 PUSH_RESULTS=""
@@ -37,6 +37,7 @@ while [[ $# -gt 0 ]]; do
         --gpu)          USE_GPU="1";        shift ;;
         --cuda124)      USE_CUDA124="1";    shift ;;
         --cpu)          USE_CPU="1";        shift ;;
+        --agent-v1)     USE_AGENT_V2="";    shift ;;
         --agent-v2)     USE_AGENT_V2="1";   shift ;;
         --download)     USE_DOWNLOAD="1";   shift ;;
         --no-pull)      SKIP_PULL="1";      shift ;;
@@ -59,7 +60,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --gpu                  Use NVIDIA GPU acceleration (requires nvidia-container-toolkit)"
             echo "  --cuda124              Custom CUDA 12.4 build with flash attention for all KV quant types (implies --gpu)"
             echo "  --cpu                  Use extended timeouts for slow CPU inference"
-            echo "  --agent-v2             Use mini-swe-agent v2 (experimental, for testing)"
+            echo "  --agent-v1             Use mini-swe-agent v1 (legacy)"
+            echo "  --agent-v2             Use mini-swe-agent v2 (default)"
             echo "  --download             Download model from HuggingFace if not present"
             echo "  --no-pull              Skip Docker image pull (run pull separately in parallel)"
             echo "  --push                 Push results to HuggingFace after evaluation (requires HF_TOKEN)"
