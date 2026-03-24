@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -25,6 +26,8 @@ except ImportError:
 
 DEFAULT_REPO = "burakaydinofficial/Quantuzo"
 RUNS_PREFIX = "runs"
+RATE_LIMIT_WAIT = 300  # HF rate limit window is 5 minutes
+MAX_RETRIES = 5
 
 
 def list_runs(api, repo_id):
@@ -40,32 +43,46 @@ def list_runs(api, repo_id):
 
 
 def pull_run(api, repo_id, run_id, results_dir):
-    """Pull a single run from HF to local results directory."""
+    """Pull a single run from HF to local results directory.
+
+    Retries with backoff on 429 rate-limit errors. snapshot_download
+    caches partial progress so each retry resumes where it left off.
+    """
     dest = results_dir / run_id
     if dest.exists():
         print(f"  Already exists: {dest} (skipping)")
         return True
 
     print(f"  Downloading: {run_id}")
-    try:
-        cache_dir = snapshot_download(
-            repo_id=repo_id,
-            repo_type="dataset",
-            allow_patterns=f"{RUNS_PREFIX}/{run_id}/**",
-        )
-        # snapshot_download puts files under cache_dir/runs/{run_id}/
-        src = Path(cache_dir) / RUNS_PREFIX / run_id
-        if not src.exists():
-            print(f"  ERROR: Run not found in repo: {run_id}")
-            return False
+    for attempt in range(MAX_RETRIES):
+        try:
+            cache_dir = snapshot_download(
+                repo_id=repo_id,
+                repo_type="dataset",
+                allow_patterns=f"{RUNS_PREFIX}/{run_id}/**",
+            )
+            # snapshot_download puts files under cache_dir/runs/{run_id}/
+            src = Path(cache_dir) / RUNS_PREFIX / run_id
+            if not src.exists():
+                print(f"  ERROR: Run not found in repo: {run_id}")
+                return False
 
-        # Copy from cache to results dir
-        shutil.copytree(src, dest)
-        print(f"  Saved to: {dest}")
-        return True
-    except Exception as e:
-        print(f"  ERROR: {e}")
-        return False
+            # Copy from cache to results dir
+            shutil.copytree(src, dest)
+            print(f"  Saved to: {dest}")
+            return True
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg:
+                wait = RATE_LIMIT_WAIT
+                print(f"  Rate limited, waiting {wait}s before retry ({attempt + 1}/{MAX_RETRIES})...")
+                time.sleep(wait)
+            else:
+                print(f"  ERROR: {e}")
+                return False
+
+    print(f"  ERROR: Max retries exceeded for {run_id}")
+    return False
 
 
 def main():
