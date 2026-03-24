@@ -173,7 +173,7 @@ export function LeaderboardTable({ rows, allRows }: LeaderboardTableProps) {
               key={row.run_id}
               onClick={() => navigate(`/run/${encodeURIComponent(row.run_id)}`)}
             >
-              <td className="leaderboard-table__model">{modelDisplayName(row.model_name)}</td>
+              <td className="leaderboard-table__model" title={row.model_file}>{modelDisplayName(row.model_name)}</td>
               <td className="leaderboard-table__kv">
                 {kvLabel(row.kv_type_k, row.kv_type_v)}
               </td>
