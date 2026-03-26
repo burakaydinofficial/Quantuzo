@@ -16,6 +16,45 @@ import './OverviewChart.css';
 
 const COLORS = ['#6366f1', '#22d3ee', '#f59e0b', '#a78bfa', '#ef4444', '#10b981'];
 
+function wrapAtHyphens(label: string, maxLen = 16): string[] {
+  if (label.length <= maxLen) return [label];
+
+  const breaks: number[] = [];
+  for (let i = 0; i < label.length; i++) {
+    if (label[i] === '-') breaks.push(i + 1);
+  }
+  if (breaks.length === 0) return [label];
+
+  const numLines = Math.ceil(label.length / maxLen);
+  const target = label.length / numLines;
+
+  const chosen: number[] = [];
+  for (let n = 1; n < numLines; n++) {
+    const ideal = Math.round(target * n);
+    let best = breaks[0];
+    let bestDist = Infinity;
+    for (const bp of breaks) {
+      if (chosen.length > 0 && bp <= chosen[chosen.length - 1]) continue;
+      const dist = Math.abs(bp - ideal);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = bp;
+      }
+    }
+    chosen.push(best);
+  }
+
+  chosen.sort((a, b) => a - b);
+  const lines: string[] = [];
+  let start = 0;
+  for (const bp of chosen) {
+    lines.push(label.slice(start, bp));
+    start = bp;
+  }
+  lines.push(label.slice(start));
+  return lines;
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -122,12 +161,25 @@ export function OverviewChart({ rows }: OverviewChartProps) {
           </button>
         )}
       </div>
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={340}>
         <BarChart data={data} barCategoryGap="20%">
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           <XAxis
             dataKey="model"
-            tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+            interval={0}
+            height={60}
+            tick={({ x, y, payload }: any) => {
+              const lines = wrapAtHyphens(payload.value);
+              return (
+                <g transform={`translate(${x},${y})`}>
+                  <text textAnchor="middle" fill="var(--color-text-secondary)" fontSize={11}>
+                    {lines.map((line, i) => (
+                      <tspan key={i} x={0} dy={i === 0 ? 14 : 13}>{line}</tspan>
+                    ))}
+                  </text>
+                </g>
+              );
+            }}
           />
           <YAxis
             domain={[0, 'auto']}
