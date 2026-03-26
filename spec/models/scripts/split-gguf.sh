@@ -14,18 +14,20 @@
 set -e
 
 usage() {
-    echo "Usage: $0 --model-config PATH --models-dir DIR"
+    echo "Usage: $0 --model-config PATH --models-dir DIR [--dry-run]"
     echo "This script is called by download_model.sh, not directly."
     exit 1
 }
 
 MODEL_CONF=""
 MODELS_DIR=""
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --model-config) MODEL_CONF="$2"; shift 2 ;;
         --models-dir)   MODELS_DIR="$2";  shift 2 ;;
+        --dry-run)      DRY_RUN=1; shift ;;
         *) echo "ERROR: Unknown argument: $1"; usage ;;
     esac
 done
@@ -74,13 +76,19 @@ fi
 # Detect HF subfolder from filename
 # e.g. Qwen3.5-27B-BF16-00001-of-00002.gguf -> BF16 subfolder
 HF_SUBFOLDER=""
-if [[ "$BASE" =~ -([A-Z][A-Z0-9_-]+)$ ]]; then
-    CANDIDATE="${BASH_REMATCH[1]}"
-    # Common subfolder patterns on HuggingFace
-    case "$CANDIDATE" in
-        BF16|FP16|FP32|F16|F32|MXFP4|MXFP4_MOE|Q8_0|Q6_K|Q5_K_M|Q5_K_S|Q5_0|Q5_1|Q4_K_M|Q4_K_S|Q4_0|Q4_1|Q3_K_M|Q3_K_S|UD-IQ4_NL|UD-IQ4_XS|UD-Q3_K_XL|UD-Q4_K_XL|UD-Q5_K_XL|UD-Q6_K_XL|UD-Q8_K_XL) HF_SUBFOLDER="$CANDIDATE" ;;
-    esac
-fi
+KNOWN_HF_SUBFOLDERS=(
+    BF16 FP16 FP32 F16 F32
+    MXFP4 MXFP4_MOE
+    Q8_0 Q6_K Q5_K_M Q5_K_S Q5_0 Q5_1 Q4_K_M Q4_K_S Q4_0 Q4_1 Q3_K_M Q3_K_S
+    UD-IQ4_NL UD-IQ4_XS UD-Q3_K_XL UD-Q4_K_XL UD-Q5_K_XL UD-Q6_K_XL UD-Q8_K_XL
+)
+
+for folder in "${KNOWN_HF_SUBFOLDERS[@]}"; do
+    if [[ "$BASE" == *-"$folder" ]]; then
+        HF_SUBFOLDER="$folder"
+        break
+    fi
+done
 
 # Validate GGUF file by checking magic bytes
 validate_gguf() {
@@ -118,12 +126,16 @@ if [[ -n "$HF_SUBFOLDER" ]]; then
     echo "HF Dir: $HF_SUBFOLDER/"
 fi
 echo "Dest:   $MODELS_DIR/"
+if [[ $DRY_RUN -eq 1 ]]; then
+    echo "Mode:   dry-run (no downloads, HEAD checks only)"
+fi
 echo "================================================"
 echo ""
 
 mkdir -p "$MODELS_DIR"
 
 FAILED=0
+OK=0
 for i in $(seq 1 "$TOTAL_NUM"); do
     # Zero-pad to match the width of TOTAL
     PADDED=$(printf "%0${#TOTAL}d" "$i")
@@ -136,6 +148,17 @@ for i in $(seq 1 "$TOTAL_NUM"); do
         URL="https://huggingface.co/$MODEL_REPO/resolve/main/$HF_SUBFOLDER/$PART_FILE"
     else
         URL="https://huggingface.co/$MODEL_REPO/resolve/main/$PART_FILE"
+    fi
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        HTTP_CODE=$(curl -L -I -s -o /dev/null -w "%{http_code}" "$URL")
+        echo "[$i/$TOTAL_NUM] $HTTP_CODE $URL"
+        if [[ "$HTTP_CODE" == "200" ]] || [[ "$HTTP_CODE" == "302" ]]; then
+            OK=$((OK + 1))
+        else
+            FAILED=$((FAILED + 1))
+        fi
+        continue
     fi
 
     echo "--- Part $i of $TOTAL_NUM: $PART_FILE ---"
@@ -197,6 +220,17 @@ for i in $(seq 1 "$TOTAL_NUM"); do
     echo "  OK ($(ls -lh "$DEST_FILE" | awk '{print $5}'))"
     echo ""
 done
+
+if [[ $DRY_RUN -eq 1 ]]; then
+    echo ""
+    echo "================================================"
+    echo "Dry-run summary: ok=$OK failed=$FAILED"
+    echo "================================================"
+    if [[ $FAILED -ne 0 ]]; then
+        exit 1
+    fi
+    exit 0
+fi
 
 if [[ $FAILED -ne 0 ]]; then
     echo "ERROR: Some parts failed to download. Check errors above."
