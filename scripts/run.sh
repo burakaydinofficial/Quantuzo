@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Required arguments:"
             echo "  --model, -m MODEL      Model config name (e.g., qwen3.5-4b-q4)"
-            echo "  --kv, -k KV            KV cache config name (e.g., q8, f16, q8-q4)"
+            echo "  --kv, -k KV            KV cache config name (e.g., q8, f16, q8-q4, f16-q8)"
             echo "  --dataset, -d DATASET  Dataset config name (e.g., swe-lite)"
             echo ""
             echo "Optional arguments:"

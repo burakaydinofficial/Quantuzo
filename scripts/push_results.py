@@ -108,8 +108,8 @@ Each row in `leaderboard.jsonl` contains:
 | timestamp | string | ISO 8601 UTC timestamp |
 | model_name | string | Model name |
 | model_file | string | GGUF filename |
-| kv_type_k | string | KV cache key type (f16, q8_0, q5_0, q4_0) |
-| kv_type_v | string | KV cache value type (f16, q8_0, q5_0, q4_0) |
+| kv_type_k | string | KV cache key type (f16, q8_0, q5_0, q5_1, q4_0, q4_1) |
+| kv_type_v | string | KV cache value type (f16, q8_0, q5_0, q5_1, q4_0, q4_1) |
 | ctx_size | int | Context size in tokens |
 | accelerator | string | cpu or gpu |
 | agent_version | string | mini-swe-agent version |
@@ -127,9 +127,13 @@ Each row in `leaderboard.jsonl` contains:
 | Config | KV_TYPE_K | KV_TYPE_V | Relative Memory |
 |--------|-----------|-----------|-----------------|
 | f16 | f16 | f16 | 100% (baseline) |
+| f16-q8 | f16 | q8_0 | ~88% |
+| f16-q4 | f16 | q4_0 | ~82% |
 | q8 | q8_0 | q8_0 | ~75% |
 | q5 | q5_0 | q5_0 | ~69% |
+| q5_1 | q5_1 | q5_1 | ~69% |
 | q8-q4 | q8_0 | q4_0 | ~69% |
+| q4_1 | q4_1 | q4_1 | ~65% |
 | q4 | q4_0 | q4_0 | ~63% |
 
 ## Usage

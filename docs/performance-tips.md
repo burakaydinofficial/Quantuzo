@@ -63,6 +63,6 @@ SWE-bench Docker images are large. If they're pulled on-demand during a run, the
 
 These settings in `spec/runtime.conf` are less commonly tuned but available:
 
-- **`FLASH_ATTN`** (default: `auto`) — Flash attention mode for GPU inference. Options: `auto` (detect hardware support), `on` (force enable), `off` (disable). Note that q4_1, q5_0, q5_1, and q8-q4 KV types require flash attention to work — without it, these quantization levels will fail. Use `--cuda124` to ensure flash attention support for all KV types.
+- **`FLASH_ATTN`** (default: `on`) — Flash attention mode for GPU inference. Options: `auto` (detect hardware support), `on` (force enable), `off` (disable). Note that q4_1, q5_0, q5_1 and asymmetric types (q8-q4, f16-q8, f16-q4) require `--cuda124` to work correctly.
 - **`CACHE_RAM`** (default: `0`) — Prompt cache RAM limit in MiB. Controls how much memory the server uses for caching previous prompts. Set to `0` to disable (recommended — prompt caching adds overhead from matching new chats against cached ones, which slows down runs without benefit in this benchmark).
 - **`EXTRA_LLAMA_ARGS`** — Extra arguments passed directly to llama-server. For example, `-nkvo` to offload KV cache to CPU.

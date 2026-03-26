@@ -104,13 +104,13 @@ GPU mode:
 
 ### All-Quant Flash Attention (CUDA 12.4)
 
-The official CUDA image only supports flash attention for f16, q8_0, and q4_0 KV types. For q4_1, q5_0, q5_1, and q8-q4 (asymmetric), use the `--cuda124` flag which builds a custom image with `GGML_CUDA_FA_ALL_QUANTS=ON`:
+The official CUDA image only supports flash attention for f16, q8_0, and q4_0 KV types. For q4_1, q5_0, q5_1, and asymmetric combinations (q8-q4, f16-q8, f16-q4), use the `--cuda124` flag which builds a custom image with `GGML_CUDA_FA_ALL_QUANTS=ON`:
 
 ```bash
 ./scripts/run.sh --cuda124 --model qwen3.5-4b-q4 --kv q5 --dataset swe-lite
 ```
 
-Without this flag, unsupported KV types silently fall back to non-flash attention.
+Without this flag, these KV types may not work correctly.
 
 ### VRAM Requirements (64K context)
 
@@ -131,6 +131,8 @@ spec/
 │   └── qwen3-4b-instruct-2507.conf  # MODEL_FILE, MODEL_NAME
 ├── quantization/
 │   ├── f16.conf              # KV_TYPE_K, KV_TYPE_V
+│   ├── f16-q8.conf
+│   ├── f16-q4.conf
 │   ├── q8.conf
 │   ├── q5.conf
 │   ├── q5_1.conf
@@ -289,6 +291,7 @@ The difference in resolution rate compared to the F16 baseline. Negative values 
 ### Expected Patterns
 - Q8 typically shows minimal degradation (<1%)
 - Q8/Q4 asymmetric often performs better than Q4/Q4 symmetric
+- F16/Q8 and F16/Q4 asymmetric test V-only quantization with full-precision keys
 - Q4 may show 2-5% degradation depending on the model
 
 ## Performance Tips

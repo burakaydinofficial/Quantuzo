@@ -52,7 +52,7 @@ Or run all KV configurations for a model:
 ./scripts/run_all.sh --gpu --model qwen3.5-4b-q4
 ```
 
-For KV types that need all-quant flash attention (q4_1, q5_0, q5_1, q8-q4):
+For KV types that need all-quant flash attention (q4_1, q5_0, q5_1, q8-q4, f16-q8, f16-q4):
 
 ```bash
 ./scripts/run.sh --cuda124 -m qwen3.5-4b-q4 -k q5_1 -d swe-lite

@@ -7,6 +7,8 @@ export interface KvConfig {
 
 const KV_CONFIGS: KvConfig[] = [
   { label: 'f16', k: 'f16', v: 'f16', memoryPct: 100 },
+  { label: 'f16/q8', k: 'f16', v: 'q8_0', memoryPct: 88 },
+  { label: 'f16/q4', k: 'f16', v: 'q4_0', memoryPct: 82 },
   { label: 'q8', k: 'q8_0', v: 'q8_0', memoryPct: 75 },
   { label: 'q5', k: 'q5_0', v: 'q5_0', memoryPct: 69 },
   { label: 'q5_1', k: 'q5_1', v: 'q5_1', memoryPct: 69 },
