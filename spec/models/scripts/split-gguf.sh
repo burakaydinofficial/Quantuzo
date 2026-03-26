@@ -74,11 +74,11 @@ fi
 # Detect HF subfolder from filename
 # e.g. Qwen3.5-27B-BF16-00001-of-00002.gguf -> BF16 subfolder
 HF_SUBFOLDER=""
-if [[ "$BASE" =~ -([A-Z][A-Z0-9]+)$ ]]; then
+if [[ "$BASE" =~ -([A-Z][A-Z0-9_-]+)$ ]]; then
     CANDIDATE="${BASH_REMATCH[1]}"
     # Common subfolder patterns on HuggingFace
     case "$CANDIDATE" in
-        BF16|FP16|FP32|F16|F32) HF_SUBFOLDER="$CANDIDATE" ;;
+        BF16|FP16|FP32|F16|F32|MXFP4|MXFP4_MOE|Q8_0|Q6_K|Q5_K_M|Q5_K_S|Q5_0|Q5_1|Q4_K_M|Q4_K_S|Q4_0|Q4_1|Q3_K_M|Q3_K_S|UD-IQ4_NL|UD-IQ4_XS|UD-Q3_K_XL|UD-Q4_K_XL|UD-Q5_K_XL|UD-Q6_K_XL|UD-Q8_K_XL) HF_SUBFOLDER="$CANDIDATE" ;;
     esac
 fi
 
