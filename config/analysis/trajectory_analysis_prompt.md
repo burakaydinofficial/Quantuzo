@@ -16,6 +16,7 @@ Analyze the agent's behavior and produce a JSON object with the fields described
 ## Output format
 
 Respond with ONLY a JSON object. No markdown, no explanation, no code fences.
+If you are a thinking model, keep your internal reasoning brief — this is a classification task, not a research problem. Do not re-analyze every step in detail; focus on identifying the pattern and producing the JSON.
 
 ```json
 {
@@ -74,3 +75,5 @@ If no behavioral loop is detected, set `detected: false`, `start_step: null`, `d
 ## summary field
 
 1-3 factual sentences describing what happened. Include: what the agent explored, what it tried, and how/why it stopped. Do not editorialize.
+
+/no_think

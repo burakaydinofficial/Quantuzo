@@ -247,7 +247,7 @@ def create_client(base_url: str | None = None, api_key: str | None = None):
         print("ERROR: openai package required. pip install openai")
         sys.exit(1)
 
-    kwargs = {}
+    kwargs = {"timeout": 1800.0}  # 30 min — needed for large models with long thinking
     if base_url:
         kwargs["base_url"] = base_url
     if api_key:
@@ -267,17 +267,18 @@ def call_llm(
         try:
             response = client.chat.completions.create(
                 model=model,
-                max_tokens=16384,
+                max_tokens=4096,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                temperature=0,
+                temperature=0.1 if attempt > 0 else 0,
             )
-            text = response.choices[0].message.content.strip()
+            raw = response.choices[0].message.content.strip()
+            raw_len = len(raw)
 
             # Strip thinking tags (e.g. Qwen3.5)
-            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+            text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
 
             # Strip markdown code fences if present
             if text.startswith("```"):
@@ -289,7 +290,8 @@ def call_llm(
             return json.loads(text)
 
         except json.JSONDecodeError as e:
-            print(f"  JSON parse error (attempt {attempt + 1}): {e}")
+            after_strip = len(text)
+            print(f"  JSON parse error (attempt {attempt + 1}): {e} [raw={raw_len}, after_strip={after_strip}]")
             if attempt < 2:
                 time.sleep(2)
         except Exception as e:
