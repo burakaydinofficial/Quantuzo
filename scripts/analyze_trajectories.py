@@ -19,6 +19,7 @@ Environment variables:
 
 import argparse
 import concurrent.futures
+from collections import Counter
 import hashlib
 import json
 import os
@@ -185,7 +186,6 @@ def pre_classify(steps_data: dict, resolution: str) -> str | None:
     # Check for identical steps by content (thought_preview + output_preview)
     regular = [s for s in steps if s.get("type") == "step"]
     if len(regular) >= 10:
-        from collections import Counter
         sigs = [
             (s.get("thought_preview", "")[:100], s.get("output_preview", "")[:100])
             for s in regular
