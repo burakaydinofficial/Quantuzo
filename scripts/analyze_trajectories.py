@@ -182,6 +182,25 @@ def pre_classify(steps_data: dict, resolution: str) -> str | None:
     if regular_steps > 0 and repeated_steps > regular_steps * 0.6:
         return "exact_loop"
 
+    # Check for identical steps by content (thought_preview + output_preview)
+    regular = [s for s in steps if s.get("type") == "step"]
+    if len(regular) >= 10:
+        from collections import Counter
+        sigs = [
+            (s.get("thought_preview", "")[:100], s.get("output_preview", "")[:100])
+            for s in regular
+        ]
+        top_count = Counter(sigs).most_common(1)[0][1]
+        # Overall: 50%+ identical = stuck from early on
+        if top_count >= len(sigs) * 0.5:
+            return "exact_loop"
+        # Tail: 80%+ of last half identical = got stuck later
+        half = len(sigs) // 2
+        tail = sigs[half:]
+        tail_top = Counter(tail).most_common(1)[0][1]
+        if tail_top >= len(tail) * 0.8:
+            return "exact_loop"
+
     if resolution in ("unresolved", "error"):
         return "submitted_incorrect"
 
