@@ -137,7 +137,7 @@ export function OverviewChart({ rows }: OverviewChartProps) {
       .map(([label]) => label);
 
     const flatData: FlatEntry[] = [];
-    const modelGroups: Array<{ model: string; startIdx: number; endIdx: number }> = [];
+    const modelGroups: Array<{ model: string; startIdx: number; endIdx: number; labelIdx: number; realStartIdx: number }> = [];
     let hasDuplicates = false;
 
     for (const model of models) {
@@ -185,10 +185,56 @@ export function OverviewChart({ rows }: OverviewChartProps) {
         });
       }
 
+      // Pad narrow groups to minimum 4 bars so labels don't overlap
+      const minBars = 4;
+      const barCount = sortedKvs.length;
+      const padTotal = Math.max(0, minBars - barCount);
+      const padBefore = Math.ceil(padTotal / 2);
+      const padAfter = padTotal - padBefore;
+
+      // Insert padding before real bars
+      if (padBefore > 0) {
+        const beforePads: FlatEntry[] = [];
+        for (let p = 0; p < padBefore; p++) {
+          beforePads.push({
+            label: `__pad_${model}_before_${p}`,
+            model: modelDisplayName(model),
+            kv: '',
+            value: 0,
+            n: 0,
+            min: 0,
+            max: 0,
+            colorIndex: -1,
+            isSpacer: true,
+          });
+        }
+        flatData.splice(startIdx, 0, ...beforePads);
+      }
+
+      const realStartIdx = startIdx + padBefore;
+      const realEndIdx = realStartIdx + barCount - 1;
+
+      // Insert padding after real bars
+      for (let p = 0; p < padAfter; p++) {
+        flatData.push({
+          label: `__pad_${model}_after_${p}`,
+          model: modelDisplayName(model),
+          kv: '',
+          value: 0,
+          n: 0,
+          min: 0,
+          max: 0,
+          colorIndex: -1,
+          isSpacer: true,
+        });
+      }
+
       modelGroups.push({
         model: modelDisplayName(model),
         startIdx,
         endIdx: flatData.length - 1,
+        labelIdx: realEndIdx,
+        realStartIdx,
       });
     }
 
@@ -230,10 +276,11 @@ export function OverviewChart({ rows }: OverviewChartProps) {
               const group = modelGroups.find(
                 (g) => entryIdx >= g.startIdx && entryIdx <= g.endIdx,
               );
-              if (!group || entryIdx !== group.endIdx) return <g />;
+              if (!group || entryIdx !== group.labelIdx) return <g />;
 
-              const startX = tickXRef.current.get(group.startIdx) ?? x;
-              const cx = (startX + x) / 2;
+              const startX = tickXRef.current.get(group.realStartIdx) ?? x;
+              const labelEndX = tickXRef.current.get(group.labelIdx) ?? x;
+              const cx = (startX + labelEndX) / 2;
 
               const lines = wrapAtHyphens(group.model);
               return (
@@ -249,6 +296,7 @@ export function OverviewChart({ rows }: OverviewChartProps) {
           />
           <YAxis
             domain={[0, 'auto']}
+            width={35}
             tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
             tickFormatter={(v: number) => `${v}%`}
           />
