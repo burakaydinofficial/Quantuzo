@@ -71,32 +71,66 @@ ls results/
 ./scripts/run.sh --gpu -m qwen3.5-4b-q4 -k q8 -d swe-lite --run-id EXISTING_RUN_ID evaluate
 ```
 
-## 5. Push results to HuggingFace
+## 5. Contribute your results (as a Pull Request)
 
-Set up a HuggingFace token with **write** access:
+You do **not** need write access to the dataset. Results are contributed as a
+Pull Request that adds **only your run folder** under `runs/`. The leaderboard is
+generated automatically from each run's `summary.json`, so you never hand-edit a
+shared file.
+
+Set a HuggingFace token — a normal free token is enough; it only needs to open a PR:
 
 ```bash
 echo 'HF_TOKEN=hf_your_token_here' >> .env
 ```
 
-Push results:
+Open the PR with your run folder:
 
 ```bash
-# Push a specific run
-python3 scripts/push_results.py --run-id YOUR_RUN_ID
+# Contribute one run as a PR (folder only)
+python3 scripts/push_results.py --run-id YOUR_RUN_ID --pr
 
-# Or push all unpushed results
-python3 scripts/push_results.py --all
-
-# Dry run to see what would be pushed
-python3 scripts/push_results.py --all --dry-run
+# Preview what would be contributed, without uploading
+python3 scripts/push_results.py --run-id YOUR_RUN_ID --pr --dry-run
 ```
 
-You can also auto-push after evaluation by adding `--push` to the run command:
+Or contribute automatically right after evaluation by adding `--push`:
 
 ```bash
 ./scripts/run.sh --gpu -m qwen3.5-4b-q4 -k q8 -d swe-lite --push
 ```
+
+Each run folder carries a `summary.json` (written automatically at the end of a
+run) that the leaderboard is built from. If you're on an older version that
+doesn't generate one, that's fine — it can be generated after merge. **Do not
+edit `leaderboard.jsonl` / `leaderboard.v2.jsonl` in your PR**; the leaderboard is
+regenerated from run folders and PRs that modify it are not accepted.
+
+### Validate before you submit
+
+Run the same check a maintainer runs before merging:
+
+```bash
+python3 scripts/validate_run.py results/YOUR_RUN_ID
+```
+
+It confirms the run is well-formed, its numbers are internally consistent, and no
+resolved patch games the tests. Maintainers additionally validate the open PR with
+`python3 scripts/validate_run.py --repo <repo> --pr <N>` (which also checks the PR
+touches only its own run folder) before merging. If you're hacking on the harness
+itself, `make test` runs the tooling's unit tests.
+
+A run is **refused** (and `--push` will not contribute it) if any of these hold:
+
+| Refused when | Why |
+|---|---|
+| It isn't a **complete** dataset run — e.g. anything run with `--filter` | A 5-instance run at 100% isn't comparable to a 300-instance run |
+| Its `benchmark` isn't one of `swe-bench-lite` / `-verified` / `-full` | Only known datasets have a canonical size to check against |
+| Its numbers disagree with `evaluation_results.json`, or it claims more resolved instances than it has non-empty patches | Guards against corrupted or hand-edited results |
+| A prediction has no trajectory | The run is internally inconsistent; remove that key from `preds.json` and re-run `generate` |
+
+So use `--filter` freely for quick checks — just don't expect a filtered run to be
+contributable. Contribute full runs only.
 
 ## 6. Verify on the dashboard
 

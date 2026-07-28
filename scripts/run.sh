@@ -64,7 +64,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --agent-v2             Use mini-swe-agent v2 (default)"
             echo "  --download             Download model from HuggingFace if not present"
             echo "  --no-pull              Skip Docker image pull (run pull separately in parallel)"
-            echo "  --push                 Push results to HuggingFace after evaluation (requires HF_TOKEN)"
+            echo "  --push                 Contribute the run to HuggingFace as a PR after evaluation"
+            echo "                         (requires HF_TOKEN; the run must pass validate_run.py)"
             echo "  --run-id ID            Use existing run ID (for evaluating interrupted runs)"
             echo ""
             echo "Commands:"
@@ -248,6 +249,12 @@ setup_results_dir() {
     fi
     export RUN_ID
 
+    # run_id becomes a path segment — reject traversal/odd chars before mkdir.
+    if [[ ! "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "Error: run_id has unsafe characters (allowed: A-Za-z0-9 . _ -): $RUN_ID"
+        exit 1
+    fi
+
     RESULTS_DIR="$PROJECT_DIR/results/$RUN_ID"
     mkdir -p "$RESULTS_DIR"
 
@@ -317,7 +324,7 @@ wait_for_server() {
     log "Waiting for llama-server to be ready..."
     local attempts=0
     local max_attempts=60  # 60 × 5s = 5 minutes
-    until $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; do
+    until $COMPOSE_CMD ps llama-server 2>/dev/null | grep -qw "healthy"; do
         if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "Exited"; then
             log "ERROR: llama-server exited unexpectedly"
             $COMPOSE_CMD logs llama-server --tail 50
@@ -343,13 +350,76 @@ run_generate() {
     fi
 }
 
+generate_summary() {
+    log "Generating summary.json"
+    if python3 "$SCRIPT_DIR/generate_summary.py" --run-id "$RUN_ID"; then
+        return 0
+    fi
+    log "WARNING: summary.json not generated (run may be incomplete) — skipping HuggingFace contribution"
+    return 1
+}
+
 push_results() {
     if [[ -n "$PUSH_RESULTS" ]]; then
-        log "Pushing results to HuggingFace..."
-        python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" || {
-            log "WARNING: Failed to push results to HuggingFace"
-        }
+        # Folder-only PR (create_pr) — works for owner and contributors alike.
+        # The leaderboard is derived separately (push_results.py --rebuild-leaderboard),
+        # so pushing never edits it.
+        log "Contributing run folder to HuggingFace (as PR)..."
+        if ! python3 "$SCRIPT_DIR/push_results.py" --run-id "$RUN_ID" --pr; then
+            log "WARNING: Failed to contribute run folder to HuggingFace"
+            PUSH_BLOCKED="the upload to HuggingFace failed (check HF_TOKEN and connectivity)"
+        fi
     fi
+}
+
+# Holds the REASON a requested --push did not happen, so the final log never reports
+# success for a contribution that didn't occur (and never misattributes the cause).
+PUSH_BLOCKED=""
+
+# Post-evaluation chain: summarize -> validate -> contribute. Always returns 0 so a
+# refused contribution doesn't abort the run (or a run_all.sh sweep); the caller
+# reports PUSH_BLOCKED instead.
+finalize_run() {
+    if ! generate_summary; then
+        if [[ -n "$PUSH_RESULTS" ]]; then
+            PUSH_BLOCKED="summary.json could not be generated (the run may be incomplete)"
+        fi
+        return 0
+    fi
+    if ! validate_before_push; then
+        if [[ -n "$PUSH_RESULTS" ]]; then
+            PUSH_BLOCKED="the run did not pass validation"
+        fi
+        return 0
+    fi
+    push_results
+    return 0
+}
+
+report_push_blocked() {
+    if [[ -n "$PUSH_BLOCKED" ]]; then
+        echo ""
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        echo "RESULTS WERE NOT CONTRIBUTED — $PUSH_BLOCKED."
+        echo "The run itself is intact in: $RESULTS_DIR"
+        echo "Check the run, then contribute it with:"
+        echo "  python3 scripts/validate_run.py $RESULTS_DIR"
+        echo "  python3 scripts/push_results.py --run-id $RUN_ID --pr"
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        echo ""
+    fi
+}
+
+validate_before_push() {
+    # Gate the contribution: only worth reading the run's trajectories+preds when
+    # we're actually about to push. A run that fails validation is NOT contributed.
+    [[ -z "$PUSH_RESULTS" ]] && return 0
+    log "Validating run before contributing..."
+    if python3 "$SCRIPT_DIR/validate_run.py" "$RESULTS_DIR"; then
+        return 0
+    fi
+    log "ERROR: run failed validation — NOT contributing it. Investigate first."
+    return 1
 }
 
 # --- Print configuration ---
@@ -395,6 +465,11 @@ case "$COMMAND" in
         log "Starting patch generation"
         run_generate --abort-on-container-exit
         log "Patch generation completed"
+        if [[ -n "$PUSH_RESULTS" ]]; then
+            log "NOTE: --push does nothing on 'generate' (results are contributed after evaluation)."
+            log "      Run the evaluate phase to contribute:"
+            log "        ./scripts/run.sh -m $MODEL -k $KV -d $DATASET_NAME --run-id $RUN_ID --push evaluate"
+        fi
         ;;
 
     evaluate)
@@ -402,7 +477,8 @@ case "$COMMAND" in
         log "Starting evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
         log "Evaluation completed"
-        push_results
+        finalize_run
+        report_push_blocked
         ;;
 
     both)
@@ -411,7 +487,7 @@ case "$COMMAND" in
         pull_images
 
         SERVER_WAS_RUNNING=""
-        if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -q "healthy"; then
+        if $COMPOSE_CMD ps llama-server 2>/dev/null | grep -qw "healthy"; then
             echo ""
             echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
             echo "WARNING: llama-server is already running!"
@@ -422,6 +498,12 @@ case "$COMMAND" in
             echo ""
             log "Using existing llama-server - WARNING: KV config may not match!"
             SERVER_WAS_RUNNING="1"
+            if [[ -n "$PUSH_RESULTS" ]]; then
+                log "ERROR: refusing --push against a pre-existing server — its KV cache type can't be"
+                log "       confirmed to match K:$KV_TYPE_K/V:$KV_TYPE_V, and the run would be published mislabeled."
+                log "       Stop the server first:  ./scripts/run.sh stop"
+                exit 1
+            fi
         else
             log "Starting llama-server (detached)"
             $COMPOSE_CMD up -d llama-server
@@ -438,9 +520,10 @@ case "$COMMAND" in
 
         log "Phase 2: Evaluation"
         $COMPOSE_CMD --profile evaluate up evaluator
-        push_results
+        finalize_run
 
         log "Full pipeline completed"
         log "Results available at: $RESULTS_DIR"
+        report_push_blocked
         ;;
 esac

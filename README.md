@@ -189,11 +189,11 @@ spec/
 # Pre-pull SWE-bench Docker images (prevents timeouts during runs)
 ./scripts/pull_images.sh princeton-nlp/SWE-bench_Lite
 
-# Push results to HuggingFace
-python3 scripts/push_results.py --all
-python3 scripts/push_results.py --run-id RUN_ID
-python3 scripts/push_results.py --all --dry-run
-python3 scripts/push_results.py --rebuild-leaderboard  # Rebuild from HF data
+# Contribute results as a PR (folder only, no dataset write access needed)
+python3 scripts/push_results.py --run-id RUN_ID --pr
+python3 scripts/push_results.py --all --pr
+python3 scripts/push_results.py --run-id RUN_ID --pr --dry-run
+python3 scripts/push_results.py --rebuild-leaderboard  # Maintainer: regenerate leaderboard.v2.jsonl
 
 # Pull results from HuggingFace
 python3 scripts/pull_results.py --list             # List available runs
@@ -241,13 +241,16 @@ results/swe-lite-qwen3-4b-instruct-2507-kv-q8-q8-20240115_143052/
 
 ## Publishing and Pulling Results
 
-Results are published to [HuggingFace](https://huggingface.co/datasets/burakaydinofficial/Quantuzo). Use `--push` to upload automatically after evaluation, or push/pull manually:
+Results are published to [HuggingFace](https://huggingface.co/datasets/burakaydinofficial/Quantuzo). Contributors submit **only their run folder** as a Pull Request (no write access to the dataset needed); the leaderboard is regenerated from each run's `summary.json`. Use `--push` to open the PR automatically after evaluation, or do it manually:
 
 ```bash
-# Requires HF_TOKEN with write access (set in .env or environment)
-python3 scripts/push_results.py --run-id RUN_ID
-python3 scripts/push_results.py --all
-python3 scripts/push_results.py --rebuild-leaderboard  # Rebuild leaderboard from HF data
+# Contribute a run as a PR — folder only, a normal HF_TOKEN is enough
+python3 scripts/push_results.py --run-id RUN_ID --pr
+python3 scripts/push_results.py --all --pr
+
+# Maintainer: regenerate the derived leaderboard (leaderboard.v2.jsonl) from summaries
+python3 scripts/push_results.py --rebuild-leaderboard          # from HF (needs write access)
+python3 scripts/push_results.py --rebuild-leaderboard --local  # from local results/
 
 # Pull results from HuggingFace
 python3 scripts/pull_results.py --list             # List available runs
@@ -256,6 +259,18 @@ python3 scripts/pull_results.py --all              # Pull all runs
 ```
 
 Both scripts support `--repo REPO` (or `HF_REPO` env var) to target a different HuggingFace repository.
+
+**Maintainer note:** a run appears on the leaderboard only after its `summary.json` exists and a rebuild runs (the [rebuild-leaderboard Action](.github/workflows/rebuild-leaderboard.yml), or `make rebuild-leaderboard`). Fresh runs write `summary.json` automatically; for a run that lacks one (e.g. contributed from an older version), pull it, generate the summary, and push it back before rebuilding — the rebuild reads `summary.json` from the dataset, not from your disk:
+
+```bash
+python3 scripts/pull_results.py --run-id RUN_ID
+python3 scripts/generate_summary.py --fill-missing
+python3 scripts/push_results.py --run-id RUN_ID    # re-upload so the rebuild can see it
+```
+
+The rebuild reports any run it skipped for a missing (or eval-less, unverifiable) summary.
+
+`validate_run.py` checks a run's *internal consistency* — counts, non-empty resolved patches, that a PR touches only its own folder, and that `summary.json` agrees with `evaluation_results.json`. It cannot verify the evaluation actually ran on the claimed configuration: descriptive fields (KV types, `ctx_size`, model, agent) are contributor-asserted, so it catches sloppy or accidental errors, not a carefully fabricated self-consistent run. Weigh cross-contributor comparisons accordingly.
 
 ## Adding New Models
 

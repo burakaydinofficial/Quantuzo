@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Push benchmark results to HuggingFace Dataset repository.
+Push benchmark run folders to a HuggingFace Dataset repository.
 
-Uploads full result artifacts and maintains a structured leaderboard.
+Uploads a run's artifacts only — it never edits the leaderboard. The leaderboard is
+a DERIVED artifact, regenerated from every run's summary.json by --rebuild-leaderboard.
 
 Usage:
-    python3 scripts/push_results.py --run-id RUN_ID     # Push single run
-    python3 scripts/push_results.py --all                # Push all local results
-    python3 scripts/push_results.py --rebuild-leaderboard # Rebuild from HF data
+    python3 scripts/push_results.py --run-id RUN_ID --pr  # Contribute a run as a PR
+    python3 scripts/push_results.py --run-id RUN_ID       # Push to main (needs write access)
+    python3 scripts/push_results.py --all --pr            # Contribute every local run
+    python3 scripts/push_results.py --rebuild-leaderboard # Maintainer: regenerate the board
 
-Requires HF_TOKEN environment variable.
+Requires HF_TOKEN (a normal token is enough for --pr; writing to main needs write access).
 """
 
 import argparse
@@ -29,8 +31,21 @@ try:
 except ImportError:
     print("huggingface_hub not found, installing...")
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "huggingface_hub"])
+    # Bounded like the Action, so a token-bearing script never pulls an unvetted major.
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "huggingface_hub>=0.20,<1.0"])
     from huggingface_hub import HfApi, hf_hub_download
+
+
+sys.path.insert(0, str(Path(__file__).parent))
+from leaderboard_lib import (  # noqa: E402
+    LEADERBOARD_V2_FILE,
+    RUNS_PREFIX,
+    SUMMARY_FILE,
+    build_leaderboard_row,
+    build_leaderboard_rows_local,
+    load_metadata,
+    summary_matches_eval,
+)
 
 
 # =============================================================================
@@ -38,8 +53,6 @@ except ImportError:
 # =============================================================================
 
 DEFAULT_REPO = "burakaydinofficial/Quantuzo"
-LEADERBOARD_FILE = "leaderboard.jsonl"
-RUNS_PREFIX = "runs"
 UPLOAD_EXCLUDE = ["testbed", "testbed/**"]
 
 DATASET_CARD = """\
@@ -86,10 +99,11 @@ llama.cpp (KV cache quantization) -> OpenAI-compatible API -> mini-SWE-agent -> 
 ```
 Quantuzo/
 +-- README.md
-+-- leaderboard.jsonl          # One JSON row per run (programmatic access)
++-- leaderboard.v2.jsonl       # One JSON row per run — DERIVED from runs/*/summary.json
 +-- runs/
     +-- {run_id}/
         +-- metadata.json             # Run configuration
+        +-- summary.json              # Self-describing leaderboard row (source for the board)
         +-- preds.json                # Agent predictions (keyed by instance_id)
         +-- swebench_predictions.json # SWE-bench harness format
         +-- evaluation_results.json   # Full evaluation results
@@ -100,7 +114,9 @@ Quantuzo/
 
 ## Leaderboard Schema
 
-Each row in `leaderboard.jsonl` contains:
+Runs are contributed as Pull Requests that add only a `runs/{run_id}/` folder; the
+leaderboard is regenerated from each run's `summary.json`. Each row in
+`leaderboard.v2.jsonl` (identical to a run's `summary.json`, minus `schema_version`) contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -145,7 +161,7 @@ import json
 # Download leaderboard
 path = hf_hub_download(
     repo_id="burakaydinofficial/Quantuzo",
-    filename="leaderboard.jsonl",
+    filename="leaderboard.v2.jsonl",
     repo_type="dataset",
 )
 
@@ -170,86 +186,6 @@ MIT
 # Helpers
 # =============================================================================
 
-def load_metadata(result_dir: Path) -> dict | None:
-    """Load metadata.json from a result directory."""
-    metadata_file = result_dir / "metadata.json"
-    if not metadata_file.exists():
-        return None
-    try:
-        with open(metadata_file) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
-
-
-def extract_eval_results(result_dir: Path) -> dict | None:
-    """Extract evaluation results from a result directory."""
-    eval_file = result_dir / "evaluation_results.json"
-    if not eval_file.exists():
-        return None
-    try:
-        with open(eval_file) as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return None
-
-
-def extract_exit_statuses(result_dir: Path) -> dict[str, int]:
-    """Count exit statuses from trajectory files in a result directory."""
-    counts: dict[str, int] = {}
-    for traj_file in result_dir.glob("*/*.traj.json"):
-        try:
-            with open(traj_file) as f:
-                traj = json.load(f)
-            status = traj.get("info", {}).get("exit_status", "unknown")
-            counts[status] = counts.get(status, 0) + 1
-        except (json.JSONDecodeError, IOError):
-            counts["parse_error"] = counts.get("parse_error", 0) + 1
-    return counts
-
-
-def build_leaderboard_row(
-    metadata: dict,
-    eval_results: dict | None,
-    exit_statuses: dict[str, int] | None = None,
-) -> dict:
-    """Build a flat leaderboard row from metadata and evaluation results."""
-    model = metadata.get("model", {})
-    inference = metadata.get("inference", {})
-    agent = metadata.get("agent", {})
-
-    row = {
-        "run_id": metadata.get("run_id", ""),
-        "timestamp": metadata.get("timestamp", ""),
-        "model_name": model.get("name", ""),
-        "model_file": model.get("file", ""),
-        "kv_type_k": inference.get("kv_type_k", ""),
-        "kv_type_v": inference.get("kv_type_v", ""),
-        "ctx_size": inference.get("ctx_size", 0),
-        "accelerator": inference.get("accelerator", ""),
-        "agent_version": agent.get("version", ""),
-        "agent_branch": agent.get("branch", ""),
-        "benchmark": metadata.get("benchmark", ""),
-        "total": 0,
-        "resolved": 0,
-        "failed": 0,
-        "error": 0,
-        "rate": 0.0,
-    }
-
-    if eval_results:
-        row["total"] = eval_results.get("total_instances", 0)
-        row["resolved"] = eval_results.get("resolved", 0)
-        row["failed"] = eval_results.get("failed", 0)
-        row["error"] = eval_results.get("error", 0)
-        row["rate"] = eval_results.get("resolution_rate", 0.0)
-
-    if exit_statuses:
-        row["exit_statuses"] = exit_statuses
-
-    return row
-
-
 def ensure_repo(api: HfApi, repo_id: str):
     """Create the HF dataset repo if it doesn't exist."""
     try:
@@ -266,30 +202,8 @@ def ensure_repo(api: HfApi, repo_id: str):
         )
 
 
-def download_leaderboard(api: HfApi, repo_id: str) -> dict[str, dict]:
-    """Download current leaderboard.jsonl from HF, return dict keyed by run_id."""
-    rows = {}
-    try:
-        path = hf_hub_download(
-            repo_id=repo_id,
-            filename=LEADERBOARD_FILE,
-            repo_type="dataset",
-        )
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    row = json.loads(line)
-                    rows[row["run_id"]] = row
-    except Exception:
-        # File doesn't exist yet, that's fine
-        pass
-    return rows
-
-
-def upload_leaderboard(api: HfApi, repo_id: str, rows: dict[str, dict]):
-    """Upload leaderboard.jsonl to HF from dict of rows."""
-    # Sort by timestamp
+def upload_leaderboard(api: HfApi, repo_id: str, rows: dict[str, dict], filename: str):
+    """Upload a leaderboard file to HF from a dict of rows (sorted by timestamp)."""
     sorted_rows = sorted(rows.values(), key=lambda r: r.get("timestamp", ""))
     content = "\n".join(json.dumps(row, separators=(",", ":")) for row in sorted_rows)
     if content:
@@ -298,9 +212,10 @@ def upload_leaderboard(api: HfApi, repo_id: str, rows: dict[str, dict]):
     buf = io.BytesIO(content.encode("utf-8"))
     api.upload_file(
         path_or_fileobj=buf,
-        path_in_repo=LEADERBOARD_FILE,
+        path_in_repo=filename,
         repo_id=repo_id,
         repo_type="dataset",
+        commit_message=f"Rebuild {filename}",
     )
 
 
@@ -308,73 +223,89 @@ def upload_leaderboard(api: HfApi, repo_id: str, rows: dict[str, dict]):
 # Push Operations
 # =============================================================================
 
-def push_single_run(api: HfApi, repo_id: str, results_dir: Path, run_id: str, dry_run: bool = False):
-    """Push a single run's results to HF."""
+def _find_open_pr(api: HfApi, repo_id: str, title: str) -> int | None:
+    """Return the number of an open PR with this exact title, else None.
+
+    Filters client-side: get_repo_discussions' server-side type/status filters
+    don't exist on older huggingface_hub (e.g. the ambient/unpinned one used by
+    `run.sh --push`), so passing them would raise and silently open a duplicate PR.
+    """
+    try:
+        for d in api.get_repo_discussions(repo_id=repo_id, repo_type="dataset"):
+            if d.is_pull_request and d.status == "open" and d.title == title:
+                return d.num
+    except Exception as e:
+        print(f"  WARNING: could not check for an existing PR ({e}); a duplicate may be opened")
+    return None
+
+
+def push_single_run(api: HfApi, repo_id: str, results_dir: Path, run_id: str,
+                    dry_run: bool = False, as_pr: bool = False):
+    """Push a single run's folder to HF. Folder-only — never edits the leaderboard.
+
+    as_pr=True contributes via a PR (create_pr) instead of committing to main, and
+    reuses an existing open PR for the same run_id so re-runs don't open duplicates.
+    """
     run_dir = results_dir / run_id
     if not run_dir.is_dir():
         print(f"ERROR: Run directory not found: {run_dir}")
         return False
-
-    metadata = load_metadata(run_dir)
-    if not metadata:
+    if not load_metadata(run_dir):
         print(f"ERROR: No valid metadata.json in {run_dir}")
         return False
 
-    print(f"Pushing: {run_id}")
-
-    exit_statuses = extract_exit_statuses(run_dir)
+    print(f"Pushing: {run_id}" + (" (as PR)" if as_pr else ""))
 
     if dry_run:
         files = [f.relative_to(run_dir) for f in run_dir.rglob("*") if f.is_file()]
-        # Filter out testbed
         files = [f for f in files if not str(f).startswith("testbed")]
-        print(f"  Would upload {len(files)} files to {RUNS_PREFIX}/{run_id}/")
-        eval_results = extract_eval_results(run_dir)
-        if eval_results:
-            row = build_leaderboard_row(metadata, eval_results, exit_statuses)
-            print(f"  Would upsert leaderboard row: resolved={row['resolved']}/{row['total']} rate={row['rate']}%")
-            if exit_statuses:
-                print(f"  Exit statuses: {exit_statuses}")
-        else:
-            print(f"  No evaluation_results.json — leaderboard not updated")
+        target = "a PR" if as_pr else "main"
+        print(f"  Would upload {len(files)} files to {RUNS_PREFIX}/{run_id}/ on {target}")
+        print("  Leaderboard NOT touched (derived separately via --rebuild-leaderboard)")
         return True
 
-    # Upload entire run folder
-    api.upload_folder(
+    title = f"Add run {run_id}"
+    revision = None
+    create_pr = False
+    if as_pr:
+        existing = _find_open_pr(api, repo_id, title)
+        if existing is not None:
+            revision = f"refs/pr/{existing}"
+            print(f"  Updating existing PR #{existing}")
+        else:
+            create_pr = True
+
+    info = api.upload_folder(
         folder_path=str(run_dir),
         path_in_repo=f"{RUNS_PREFIX}/{run_id}",
         repo_id=repo_id,
         repo_type="dataset",
         ignore_patterns=UPLOAD_EXCLUDE,
+        commit_message=title,
+        create_pr=create_pr,
+        revision=revision,
     )
-    print(f"  Uploaded artifacts to {RUNS_PREFIX}/{run_id}/")
-
-    # Update leaderboard if evaluation results exist
-    eval_results = extract_eval_results(run_dir)
-    if eval_results:
-        rows = download_leaderboard(api, repo_id)
-        row = build_leaderboard_row(metadata, eval_results, exit_statuses)
-        rows[run_id] = row
-        upload_leaderboard(api, repo_id, rows)
-        print(f"  Leaderboard updated: resolved={row['resolved']}/{row['total']} rate={row['rate']}%")
-        if exit_statuses:
-            print(f"  Exit statuses: {exit_statuses}")
+    if as_pr:
+        # upload_folder returns a bare URL string on older hub, a CommitInfo on newer.
+        pr_url = info if isinstance(info, str) else getattr(info, "pr_url", None)
+        print(f"  PR ready: {pr_url or 'see repo discussions'}")
     else:
-        print(f"  No evaluation_results.json — leaderboard not updated")
-
+        print(f"  Uploaded artifacts to {RUNS_PREFIX}/{run_id}/")
+    print("  Leaderboard not modified (run --rebuild-leaderboard to regenerate).")
     return True
 
 
-def push_all_runs(api: HfApi, repo_id: str, results_dir: Path, dry_run: bool = False):
+def push_all_runs(api: HfApi, repo_id: str, results_dir: Path, dry_run: bool = False,
+                  as_pr: bool = False):
     """Push all local result directories to HF."""
     if not results_dir.exists():
         print(f"No results directory: {results_dir}")
-        return
+        return True  # nothing to push is a no-op, not a failure
 
     run_dirs = sorted([d for d in results_dir.iterdir() if d.is_dir()])
     if not run_dirs:
         print(f"No result directories found in: {results_dir}")
-        return
+        return True
 
     print(f"Found {len(run_dirs)} run(s) in {results_dir}")
     print()
@@ -383,7 +314,7 @@ def push_all_runs(api: HfApi, repo_id: str, results_dir: Path, dry_run: bool = F
     failed = 0
     for run_dir in run_dirs:
         try:
-            if push_single_run(api, repo_id, results_dir, run_dir.name, dry_run):
+            if push_single_run(api, repo_id, results_dir, run_dir.name, dry_run, as_pr):
                 success += 1
             else:
                 failed += 1
@@ -393,91 +324,140 @@ def push_all_runs(api: HfApi, repo_id: str, results_dir: Path, dry_run: bool = F
         print()
 
     print(f"Done: {success} pushed, {failed} failed")
+    return failed == 0
 
 
 def rebuild_leaderboard(api: HfApi, repo_id: str, dry_run: bool = False):
-    """Rebuild leaderboard.jsonl from HF run data."""
-    print(f"Rebuilding leaderboard from {repo_id}...")
+    """Rebuild the derived leaderboard (v2) from each run's summary.json.
 
-    # List all files and find metadata.json under runs/
+    Reads only runs/*/summary.json (+ evaluation_results.json to validate the
+    numbers) — O(N) tiny files, no trajectory scan. Runs without a summary are
+    SKIPPED and reported (owner runs generate_summary.py --fill-missing).
+    """
+    print(f"Rebuilding {LEADERBOARD_V2_FILE} from {repo_id} summaries...")
     try:
-        all_files = api.list_repo_files(repo_id=repo_id, repo_type="dataset")
+        all_files = set(api.list_repo_files(repo_id=repo_id, repo_type="dataset"))
     except Exception as e:
+        # Fail loudly so the scheduled/manual Action turns red instead of green.
         print(f"ERROR: Could not list repo files: {e}")
+        sys.exit(1)
+
+    run_ids = sorted({
+        f.split("/")[1] for f in all_files
+        if f.startswith(f"{RUNS_PREFIX}/") and len(f.split("/")) >= 3
+    })
+    if not run_ids:
+        print("No runs found under runs/")
         return
 
-    metadata_files = [f for f in all_files if f.startswith(f"{RUNS_PREFIX}/") and f.endswith("/metadata.json")]
+    rows: dict[str, dict] = {}
+    missing: list[str] = []       # no summary.json
+    unverified: list[str] = []    # summary but missing/inconsistent metadata or eval
+    errors: list[str] = []        # present-but-unreadable file (excluded, but fail the job)
+    mismatched: list = []
 
-    if not metadata_files:
-        print("No metadata.json files found under runs/")
-        return
+    def fetch(path):
+        with open(hf_hub_download(repo_id=repo_id, filename=path, repo_type="dataset")) as f:
+            return json.load(f)
 
-    print(f"Found {len(metadata_files)} run(s)")
-    rows = {}
-
-    for meta_path in metadata_files:
-        # meta_path is like "runs/RUN_ID/metadata.json"
-        parts = meta_path.split("/")
-        if len(parts) < 3:
+    for run_id in run_ids:
+        summary_path = f"{RUNS_PREFIX}/{run_id}/{SUMMARY_FILE}"
+        if summary_path not in all_files:
+            missing.append(run_id)
             continue
-        run_id = parts[1]
-
         try:
-            local_path = hf_hub_download(
-                repo_id=repo_id,
-                filename=meta_path,
-                repo_type="dataset",
-            )
-            with open(local_path) as f:
-                metadata = json.load(f)
+            summary = fetch(summary_path)
         except Exception as e:
-            print(f"  Skipping {run_id}: could not load metadata ({e})")
+            # One bad folder must not abort the whole rebuild (a cheap DoS on board
+            # freshness) — exclude it, publish the rest, and fail the job at the end.
+            print(f"  {run_id}: summary.json present but unreadable ({e}) — excluded")
+            errors.append(run_id)
+            continue
+        if not isinstance(summary, dict):
+            print(f"  {run_id}: summary.json is not a JSON object — skipping")
+            missing.append(run_id)
             continue
 
-        # Try to download evaluation_results.json
-        eval_results = None
+        meta_path = f"{RUNS_PREFIX}/{run_id}/metadata.json"
         eval_path = f"{RUNS_PREFIX}/{run_id}/evaluation_results.json"
+        if meta_path not in all_files or eval_path not in all_files:
+            unverified.append(run_id)
+            continue
         try:
-            local_eval_path = hf_hub_download(
-                repo_id=repo_id,
-                filename=eval_path,
-                repo_type="dataset",
-            )
-            with open(local_eval_path) as f:
-                eval_results = json.load(f)
-        except Exception:
-            pass
+            metadata, ev = fetch(meta_path), fetch(eval_path)
+        except Exception as e:
+            print(f"  {run_id}: metadata/evaluation_results.json unreadable ({e}) — excluded")
+            errors.append(run_id)
+            continue
+        if not isinstance(metadata, dict) or not isinstance(ev, dict):
+            unverified.append(run_id)
+            continue
+        if metadata.get("run_id") not in (None, run_id):
+            print(f"  {run_id}: metadata.run_id ({metadata.get('run_id')!r}) != folder — skipping (possible spoof)")
+            unverified.append(run_id)
+            continue
 
-        # Extract exit statuses from trajectory files
-        exit_statuses: dict[str, int] = {}
-        traj_files = [f for f in all_files if f.startswith(f"{RUNS_PREFIX}/{run_id}/") and f.endswith(".traj.json")]
-        for traj_path in traj_files:
-            try:
-                local_traj = hf_hub_download(
-                    repo_id=repo_id,
-                    filename=traj_path,
-                    repo_type="dataset",
-                )
-                with open(local_traj) as f:
-                    traj = json.load(f)
-                status_val = traj.get("info", {}).get("exit_status", "unknown")
-                exit_statuses[status_val] = exit_statuses.get(status_val, 0) + 1
-            except Exception:
-                exit_statuses["parse_error"] = exit_statuses.get("parse_error", 0) + 1
+        # Build the row from AUTHORITATIVE metadata+eval; the summary supplies only the
+        # exit_statuses tally (expensive to recompute) and a staleness signal — so a stale
+        # or tampered summary (e.g. a wrong KV label) can't reach the board.
+        rows[run_id] = build_leaderboard_row(metadata, ev, summary.get("exit_statuses"))
+        if summary_matches_eval(summary, ev):
+            mismatched.append(run_id)
+        print(f"  {run_id}: resolved={rows[run_id].get('resolved')}/{rows[run_id].get('total')}")
 
-        row = build_leaderboard_row(metadata, eval_results, exit_statuses or None)
-        rows[run_id] = row
-        status = f"resolved={row['resolved']}/{row['total']}" if eval_results else "no eval"
-        print(f"  {run_id}: {status}")
-        if exit_statuses:
-            print(f"    exit_statuses: {exit_statuses}")
+    if missing:
+        print(f"\n  {len(missing)} run(s) SKIPPED — no summary.json "
+              f"(pull them, then generate_summary.py --fill-missing):")
+        for r in missing:
+            print(f"    - {r}")
+    if unverified:
+        print(f"\n  {len(unverified)} run(s) SKIPPED — missing/inconsistent metadata or eval:")
+        for r in unverified:
+            print(f"    - {r}")
+    if errors:
+        print(f"\n  {len(errors)} run(s) EXCLUDED — present-but-unreadable files: {errors}")
+    if mismatched:
+        print(f"\n  {len(mismatched)} run(s) had a stale summary.json (row built from "
+              f"metadata+eval anyway): {mismatched}")
 
+    if not rows:
+        print("\nERROR: no valid rows — refusing to overwrite the leaderboard with an empty board")
+        sys.exit(1)
     if dry_run:
-        print(f"\nWould write {len(rows)} rows to {LEADERBOARD_FILE}")
+        print(f"\nWould write {len(rows)} rows to {LEADERBOARD_V2_FILE}")
         return
 
-    upload_leaderboard(api, repo_id, rows)
-    print(f"\nLeaderboard rebuilt: {len(rows)} rows")
+    upload_leaderboard(api, repo_id, rows, filename=LEADERBOARD_V2_FILE)
+    print(f"\n{LEADERBOARD_V2_FILE} rebuilt: {len(rows)} rows")
+    if errors:
+        # Board published with the good runs; still fail so the Action turns red.
+        print(f"{len(errors)} run(s) had unreadable files — failing the job.")
+        sys.exit(1)
+
+
+def rebuild_leaderboard_local(results_dir: Path, out_path: Path, dry_run: bool = False):
+    """Rebuild the derived leaderboard from LOCAL runs/*/summary.json (no HF)."""
+    if not results_dir.is_dir():
+        print(f"No results directory: {results_dir}")
+        return
+    rows, missing, mismatched = build_leaderboard_rows_local(results_dir)
+    for run_id in sorted(rows):
+        print(f"  {run_id}: resolved={rows[run_id].get('resolved')}/{rows[run_id].get('total')}")
+    if missing:
+        print(f"\n  {len(missing)} run(s) SKIPPED — no summary.json (generate_summary.py --fill-missing):")
+        for r in missing:
+            print(f"    - {r}")
+    if mismatched:
+        print(f"\n  {len(mismatched)} run(s) had a stale summary.json "
+              f"(row built from metadata+eval anyway): {mismatched}")
+
+    sorted_rows = sorted(rows.values(), key=lambda r: r.get("timestamp", ""))
+    content = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in sorted_rows)
+    if dry_run:
+        print(f"\nWould write {len(rows)} rows to {out_path}")
+        return
+    out_path.write_text(content)
+    print(f"\n{out_path} written: {len(rows)} rows")
 
 
 # =============================================================================
@@ -486,48 +466,38 @@ def rebuild_leaderboard(api: HfApi, repo_id: str, dry_run: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Push benchmark results to HuggingFace"
+        description="Push benchmark run folders to HuggingFace and rebuild the derived leaderboard"
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument(
-        "--run-id",
-        help="Push a single run by its ID",
-    )
-    mode.add_argument(
-        "--all",
-        action="store_true",
-        help="Push all local result directories",
-    )
-    mode.add_argument(
-        "--rebuild-leaderboard",
-        action="store_true",
-        help="Rebuild leaderboard.jsonl from HF run data",
-    )
+    mode.add_argument("--run-id", help="Push a single run folder by its ID")
+    mode.add_argument("--all", action="store_true", help="Push all local run folders")
+    mode.add_argument("--rebuild-leaderboard", action="store_true",
+                      help=f"Rebuild {LEADERBOARD_V2_FILE} from runs/*/summary.json")
 
-    parser.add_argument(
-        "--repo",
-        help=f"HuggingFace repo (default: {DEFAULT_REPO})",
-    )
-    parser.add_argument(
-        "--results-dir",
-        type=Path,
-        default=Path("results"),
-        help="Local results directory (default: results)",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be done without uploading",
-    )
+    parser.add_argument("--pr", action="store_true",
+                        help="Contribute run folder(s) via a PR (create_pr) instead of pushing to main")
+    parser.add_argument("--local", action="store_true",
+                        help="With --rebuild-leaderboard: build from local --results-dir and write locally (no HF)")
+    parser.add_argument("--out", type=Path,
+                        help=f"With --rebuild-leaderboard --local: output path (default: <results-dir>/../{LEADERBOARD_V2_FILE})")
+    parser.add_argument("--repo", help=f"HuggingFace repo (default: {DEFAULT_REPO})")
+    parser.add_argument("--results-dir", type=Path, default=Path("results"),
+                        help="Local results directory (default: results)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show what would be done without uploading/writing")
 
     args = parser.parse_args()
 
     # Resolve results directory
     if not args.results_dir.is_absolute():
-        script_dir = Path(__file__).parent
-        project_dir = script_dir.parent
-        args.results_dir = project_dir / args.results_dir
+        args.results_dir = Path(__file__).parent.parent / args.results_dir
+
+    # Local rebuild needs no HF at all
+    if args.rebuild_leaderboard and args.local:
+        out = args.out or (args.results_dir.parent / LEADERBOARD_V2_FILE)
+        rebuild_leaderboard_local(args.results_dir, out, args.dry_run)
+        return
 
     # Initialize API (uses HF_TOKEN env var or stored token from `huggingface-cli login`)
     hf_token = os.environ.get("HF_TOKEN")
@@ -544,10 +514,14 @@ def main():
         ensure_repo(api, repo_id)
 
     # Execute
+    # Propagate failure so callers (run.sh --push, CI) can tell a real contribution
+    # from a silent no-op.
     if args.run_id:
-        push_single_run(api, repo_id, args.results_dir, args.run_id, args.dry_run)
+        if not push_single_run(api, repo_id, args.results_dir, args.run_id, args.dry_run, args.pr):
+            sys.exit(1)
     elif args.all:
-        push_all_runs(api, repo_id, args.results_dir, args.dry_run)
+        if not push_all_runs(api, repo_id, args.results_dir, args.dry_run, args.pr):
+            sys.exit(1)
     elif args.rebuild_leaderboard:
         rebuild_leaderboard(api, repo_id, args.dry_run)
 

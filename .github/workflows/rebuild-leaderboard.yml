@@ -1,0 +1,40 @@
+name: Rebuild leaderboard
+
+# Regenerates the derived leaderboard (leaderboard.v2.jsonl) on the HF dataset from
+# every run's summary.json. MANUAL ONLY — the board does not self-heal; run this after
+# merging run PRs. (HF dataset commits do NOT trigger GitHub Actions, so this can never
+# re-trigger itself.)
+
+on:
+  # Manual only for now: run it after merging run PRs. Add the nightly schedule
+  # ONLY after the historical backfill + dashboard cutover, otherwise the cron
+  # would publish an incomplete v2 board (no historical runs) before it's ready:
+  #   schedule:
+  #     - cron: '0 6 * * *'  # 06:00 UTC nightly
+  workflow_dispatch: {}
+
+# This job writes only to HuggingFace (via HF_TOKEN); it needs no GitHub write scope.
+# contents:read is the minimum for actions/checkout (and works if the repo is private).
+permissions:
+  contents: read
+
+# Never run two rebuilds at once (a manual dispatch overlapping the nightly cron
+# would race on leaderboard.v2.jsonl).
+concurrency:
+  group: rebuild-leaderboard
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # Bounded range keeps a compromised future major from running with a write token.
+      - run: pip install --quiet 'huggingface_hub>=0.20,<1.0'
+      - name: Rebuild leaderboard.v2.jsonl from run summaries
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/push_results.py --rebuild-leaderboard
