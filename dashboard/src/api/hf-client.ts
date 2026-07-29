@@ -19,12 +19,19 @@ async function fetchText(path: string): Promise<string> {
 }
 
 export async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
-  const text = await fetchText('leaderboard.jsonl');
-  return text
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as LeaderboardRow);
+  // Derived board, regenerated from each run's summary.json.
+  const text = await fetchText('leaderboard.v2.jsonl');
+  const rows: LeaderboardRow[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      rows.push(JSON.parse(line) as LeaderboardRow);
+    } catch {
+      // Skip a malformed row rather than failing the whole leaderboard.
+      console.warn('Skipping unparseable leaderboard row');
+    }
+  }
+  return rows;
 }
 
 export async function fetchEvalResults(
